@@ -1,0 +1,21 @@
+.navbar-custom {
+    background-color: #00324C !important;
+    /* Color azul oscuro personalizado */
+}
+
+.nav-link,
+.dropdown-item {
+    font-size: 1.1rem;
+    transition: background-color 0.3s;
+}
+
+.nav-link:hover,
+.dropdown-item:hover {
+    background-color: #00324C !important;
+    /* Un tono más oscuro para el hover */
+    color: white !important;
+}
+
+.navbar-brand {
+    font-size: 1.5rem;
+    font-weight: bold; }
