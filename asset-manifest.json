@@ -1,0 +1,26 @@
+{
+  "files": {
+    "main.css": "/software-ganadero/static/css/main.b8c1bbe4.css",
+    "main.js": "/software-ganadero/static/js/main.2baedbe0.js",
+    "static/js/239.8d47fad4.chunk.js": "/software-ganadero/static/js/239.8d47fad4.chunk.js",
+    "static/js/977.2116fcb4.chunk.js": "/software-ganadero/static/js/977.2116fcb4.chunk.js",
+    "static/js/455.a544f82e.chunk.js": "/software-ganadero/static/js/455.a544f82e.chunk.js",
+    "static/js/453.fb171425.chunk.js": "/software-ganadero/static/js/453.fb171425.chunk.js",
+    "static/media/GANADERIA_2.jpg": "/software-ganadero/static/media/GANADERIA_2.560cca45522032c24af7.jpg",
+    "static/media/BOVINO_1.jpg": "/software-ganadero/static/media/BOVINO_1.4b412b2819787ba65f1a.jpg",
+    "static/media/GANADERIA_1.jpg": "/software-ganadero/static/media/GANADERIA_1.767de5349ae464acd4c0.jpg",
+    "static/media/GANADERIA_3.jpg": "/software-ganadero/static/media/GANADERIA_3.5c7b14c69fedf25ff6c0.jpg",
+    "static/media/GANADERIA_4.jpg": "/software-ganadero/static/media/GANADERIA_4.b5eb6d9f99d5f7f32f45.jpg",
+    "index.html": "/software-ganadero/index.html",
+    "main.b8c1bbe4.css.map": "/software-ganadero/static/css/main.b8c1bbe4.css.map",
+    "main.2baedbe0.js.map": "/software-ganadero/static/js/main.2baedbe0.js.map",
+    "239.8d47fad4.chunk.js.map": "/software-ganadero/static/js/239.8d47fad4.chunk.js.map",
+    "977.2116fcb4.chunk.js.map": "/software-ganadero/static/js/977.2116fcb4.chunk.js.map",
+    "455.a544f82e.chunk.js.map": "/software-ganadero/static/js/455.a544f82e.chunk.js.map",
+    "453.fb171425.chunk.js.map": "/software-ganadero/static/js/453.fb171425.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.b8c1bbe4.css",
+    "static/js/main.2baedbe0.js"
+  ]
+}
