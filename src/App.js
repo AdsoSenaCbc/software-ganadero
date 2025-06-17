@@ -12,7 +12,7 @@ import RegistrarHacienda from "./pages/Registros/RegistrarHacienda";
 import RegistrarAnimal from "./pages/Registros/RegistrarAnimal";
 import RacionAnimal from "./pages/Alimentacion/RacionAnimal";
 import RacionesCeba from "./pages/Alimentacion/RacionesCeba";
-import RacionesLactancia from "./pages/Alimentacion/RacionesLactancia"; // Actualizado a RacionesLactancia
+import RacionesLactancia from "./pages/Alimentacion/RacionesLactancia";
 import ComposicionBronatologica from "./pages/Alimentacion/ComposicionBronatologica";
 import Inventario from "./pages/Gestion/Inventario";
 import Informe from "./pages/Gestion/Informe";

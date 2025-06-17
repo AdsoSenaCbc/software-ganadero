@@ -29,7 +29,7 @@ const Desarrollador = () => {
       icon: 'info',
       confirmButtonText: 'Aceptar',
     }).then(() => {
-      window.open('https://github.com/cbc-software', '_blank');
+      window.open('https://github.com/AdsoSenaCbc/software-ganadero.git', '_blank');
     });
   };
 
@@ -67,19 +67,19 @@ const Desarrollador = () => {
           <h2>Contacto</h2>
           <ul className="contact-list">
             <li>
-              <span className="contact-icon">📧</span> Correo Electrónico: <a href="mailto:cbsoftware@bovinosapp.com">cbsoftware@bovinosapp.com</a>
+              <span className="contact-icon">📧</span> Correo Electrónico: <a href="mailto:cbsoftware@bovinosapp.com">servicioalciudadano@sena.edu.co</a>
             </li>
             <li>
-              <span className="contact-icon">📞</span> Teléfono: +57 123 456 7890
+              <span className="contact-icon">📞</span> Teléfono: 5710101
             </li>
             <li>
-              <span className="contact-icon">📍</span> Dirección: Calle 123 #45-67, Bogotá, Colombia
+              <span className="contact-icon">📍</span> Dirección: Km. 7 Vía a La Paz Valledupar
             </li>
             <li>
-              <span className="contact-icon">🌐</span> Sitio Web: <a href="https://www.bovinosapp.com" target="_blank" rel="noopener noreferrer">www.bovinosapp.com</a>
+              <span className="contact-icon">🌐</span> Sitio Web: <a href="https://adsosenacbc.github.io/SoftwareCalculoRaciones/" target="_blank" rel="noopener noreferrer">https://adsosenacbc.github.io/SoftwareCalculoRaciones/</a>
             </li>
             <li>
-              <span className="contact-icon">💻</span> GitHub: <a href="https://github.com/cbc-software" target="_blank" rel="noopener noreferrer">github.com/cbc-software</a>
+              <span className="contact-icon">💻</span> GitHub: <a href="https://github.com/cbc-software" target="_blank" rel="noopener noreferrer">https://github.com/AdsoSenaCbc/software-ganadero</a>
             </li>
           </ul>
         </section>
