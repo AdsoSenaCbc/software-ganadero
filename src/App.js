@@ -24,6 +24,7 @@ import "./App.css";
 import "./pages/IniciarSesion.css";
 import { AuthProvider, useAuth } from "./AuthContext";
 import Swal from "sweetalert2";
+import axiosInstance from "./api/axiosConfig";
 
 // Componente para la sección de "¿Olvidaste tu contraseña?"
 const ForgotPasswordLink = () => {
@@ -64,14 +65,12 @@ const IniciarSesion = () => {
   const [showLoginForm, setShowLoginForm] = useState(true);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-  const [loginRole, setLoginRole] = useState("Aprendiz");
   const [registerNombres, setRegisterNombres] = useState("");
   const [registerApellidos, setRegisterApellidos] = useState("");
   const [registerEmail, setRegisterEmail] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerDocumento, setRegisterDocumento] = useState("");
   const [registerTelefono, setRegisterTelefono] = useState("");
-  const [registerFechaNacimiento, setRegisterFechaNacimiento] = useState("");
   const [registerRole, setRegisterRole] = useState("Aprendiz");
   const [errors, setErrors] = useState({});
 
@@ -94,7 +93,6 @@ const IniciarSesion = () => {
     const newErrors = {};
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const documentoRegex = /^[a-zA-Z0-9]{6,20}$/;
-    const fechaRegex = /^\d{4}-\d{2}-\d{2}$/;
 
     if (!registerNombres.trim()) {
       newErrors.nombres = "Los nombres son obligatorios";
@@ -113,14 +111,10 @@ const IniciarSesion = () => {
       newErrors.password = "La contraseña debe tener al menos 6 caracteres";
     }
     if (!documentoRegex.test(registerDocumento)) {
-      newErrors.documento =
-        "El documento debe tener 6-20 caracteres alfanuméricos";
+      newErrors.documento = "El documento debe tener 6-20 caracteres alfanuméricos";
     }
     if (registerTelefono && !/^\d{8,15}$/.test(registerTelefono)) {
       newErrors.telefono = "El teléfono debe tener 8-15 dígitos";
-    }
-    if (registerFechaNacimiento && !fechaRegex.test(registerFechaNacimiento)) {
-      newErrors.fechaNacimiento = "Formato de fecha inválido (YYYY-MM-DD)";
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -131,14 +125,12 @@ const IniciarSesion = () => {
     setShowLoginForm(!showLoginForm);
     setLoginEmail("");
     setLoginPassword("");
-    setLoginRole("Aprendiz");
     setRegisterNombres("");
     setRegisterApellidos("");
     setRegisterEmail("");
     setRegisterPassword("");
     setRegisterDocumento("");
     setRegisterTelefono("");
-    setRegisterFechaNacimiento("");
     setRegisterRole("Aprendiz");
     setErrors({});
   };
@@ -149,36 +141,16 @@ const IniciarSesion = () => {
     if (loginEmail && loginPassword) {
       if (validateLogin()) {
         try {
-          const response = await fetch("http://localhost:5000/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email: loginEmail,
-              password: loginPassword,
-              rol: loginRole,
-            }),
+          const { data, status } = await axiosInstance.post("/auth/login", {
+            email: loginEmail,
+            password: loginPassword,
           });
-          const data = await response.json();
-
-          if (response.ok) {
+          if (status === 200) {
             const { access_token, usuario } = data;
             const registeredRole = usuario.rol;
 
-            if (loginRole !== registeredRole) {
-              Swal.fire({
-                title: "Error",
-                text: `El usuario está registrado como ${registeredRole}. No puede iniciar sesión como ${loginRole}.`,
-                icon: "error",
-                confirmButtonText: "Aceptar",
-              });
-              return;
-            }
-
             login(registeredRole, loginEmail, access_token);
-            if (
-              registeredRole === "Aprendiz" ||
-              registeredRole === "Instructor"
-            ) {
+            if (registeredRole === "Aprendiz" || registeredRole === "Instructor") {
               Swal.fire({
                 title: "Inicio de Sesión",
                 text: `Bienvenido ${registeredRole} con el correo ${loginEmail}`,
@@ -225,16 +197,6 @@ const IniciarSesion = () => {
   // Manejar registro
   const handleRegister = async (event) => {
     event.preventDefault();
-    console.log("Intentando registrar:", {
-      nombres: registerNombres,
-      apellidos: registerApellidos,
-      email: registerEmail,
-      password: registerPassword,
-      documento: registerDocumento,
-      telefono: registerTelefono,
-      fecha_nacimiento: registerFechaNacimiento,
-      rol: registerRole,
-    });
     if (
       registerNombres &&
       registerApellidos &&
@@ -244,26 +206,17 @@ const IniciarSesion = () => {
     ) {
       if (validateRegister()) {
         try {
-          const response = await fetch(
-            "http://localhost:5000/api/auth/registrar",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                nombres: registerNombres,
-                apellidos: registerApellidos,
-                email: registerEmail,
-                password: registerPassword,
-                documento: registerDocumento,
-                telefono: registerTelefono || "",
-                fecha_nacimiento: registerFechaNacimiento || "",
-                rol: registerRole,
-              }),
-            }
-          );
-          const data = await response.json();
+          const { data, status } = await axiosInstance.post("/auth/registrar", {
+            nombres: registerNombres,
+            apellidos: registerApellidos,
+            email: registerEmail,
+            password: registerPassword,
+            documento: registerDocumento,
+            telefono: registerTelefono || "",
+            rol: registerRole,
+          });
 
-          if (response.ok) {
+          if (status === 201 || status === 200) {
             Swal.fire({
               title: "Registro Exitoso",
               text: `Usuario ${registerNombres} ${registerApellidos} registrado como ${data.usuario.rol}`,
@@ -273,7 +226,6 @@ const IniciarSesion = () => {
               setShowLoginForm(true);
               setLoginEmail(registerEmail);
               setLoginPassword(registerPassword);
-              setLoginRole(registerRole);
             });
           } else {
             Swal.fire({
@@ -319,19 +271,6 @@ const IniciarSesion = () => {
           <h2>Iniciar Sesión</h2>
           <form onSubmit={handleLogin}>
             <div className="form-group">
-              <label htmlFor="loginRole">Rol</label>
-              <select
-                id="loginRole"
-                value={loginRole}
-                onChange={(e) => setLoginRole(e.target.value)}
-                required
-              >
-                <option value="Aprendiz">Aprendiz</option>
-                <option value="Instructor">Instructor</option>
-                <option value="Administrador">Administrador</option>
-              </select>
-            </div>
-            <div className="form-group">
               <label htmlFor="email">Correo Electrónico</label>
               <input
                 type="email"
@@ -341,9 +280,7 @@ const IniciarSesion = () => {
                 onChange={(e) => setLoginEmail(e.target.value)}
                 required
               />
-              {errors.email && (
-                <div className="text-danger">{errors.email}</div>
-              )}
+              {errors.email && <div className="text-danger">{errors.email}</div>}
             </div>
             <div className="form-group">
               <label htmlFor="password">Contraseña</label>
@@ -382,7 +319,6 @@ const IniciarSesion = () => {
               >
                 <option value="Aprendiz">Aprendiz</option>
                 <option value="Instructor">Instructor</option>
-                <option value="Administrador">Administrador</option>
               </select>
             </div>
             <div className="form-group">
@@ -456,7 +392,7 @@ const IniciarSesion = () => {
               )}
             </div>
             <div className="form-group">
-              <label htmlFor="registerTelefono">Teléfono (Opcional)</label>
+              <label htmlFor="registerTelefono">Teléfono</label>
               <input
                 type="tel"
                 id="registerTelefono"
@@ -466,20 +402,6 @@ const IniciarSesion = () => {
               />
               {errors.telefono && (
                 <div className="text-danger">{errors.telefono}</div>
-              )}
-            </div>
-            <div className="form-group">
-              <label htmlFor="registerFechaNacimiento">
-                Fecha de Nacimiento (Opcional)
-              </label>
-              <input
-                type="date"
-                id="registerFechaNacimiento"
-                value={registerFechaNacimiento}
-                onChange={(e) => setRegisterFechaNacimiento(e.target.value)}
-              />
-              {errors.fechaNacimiento && (
-                <div className="text-danger">{errors.fechaNacimiento}</div>
               )}
             </div>
             <div className="button-group">

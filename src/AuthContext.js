@@ -1,6 +1,5 @@
-// AuthContext.js
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { jwtDecode } from "jwt-decode"; // Corrección: Importación nombrada
+import { jwtDecode } from "jwt-decode"; 
 
 const AuthContext = createContext();
 
@@ -27,9 +26,9 @@ export function AuthProvider({ children }) {
       const storedToken = localStorage.getItem("token");
       if (storedToken) {
         try {
-          const decodedToken = jwtDecode(storedToken); // Usar jwtDecode directamente
-          const role = decodedToken.rol; // Extraer rol del token
-          const email = decodedToken.email; // Extraer email del token
+          const decodedToken = jwtDecode(storedToken); 
+          const role = decodedToken.rol; 
+          const email = decodedToken.email;
           setUser({ role, email });
           setToken(storedToken);
         } catch (error) {
