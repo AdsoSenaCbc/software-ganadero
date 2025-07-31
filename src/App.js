@@ -433,7 +433,7 @@ const ProtectedRoute = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <Router basename={process.env.PUBLIC_URL || '/software-ganadero'}>
         <div className="d-flex flex-column min-vh-100">
           <Navbar />
           <main className="container my-4">

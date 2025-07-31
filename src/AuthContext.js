@@ -26,8 +26,14 @@ export function AuthProvider({ children }) {
       const storedToken = localStorage.getItem("token");
       if (storedToken) {
         try {
-          const decodedToken = jwtDecode(storedToken); 
-          const role = decodedToken.rol; 
+          const decodedToken = jwtDecode(storedToken);
+          const now = Date.now() / 1000; // segundos
+          if (decodedToken.exp && decodedToken.exp < now) {
+            // Token expirado
+            logout();
+            return;
+          }
+          const role = decodedToken.rol;
           const email = decodedToken.email;
           setUser({ role, email });
           setToken(storedToken);
