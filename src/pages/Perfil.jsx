@@ -4,6 +4,7 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { FaUser, FaEnvelope, FaTag, FaEdit, FaSave } from 'react-icons/fa';
 import userPerfil from '../assets/images/user_perfil.png';
 import './Perfil.css';
+import Swal from 'sweetalert2';
 
 const Perfil = () => {
   const { user, updateProfileImage, logout, login } = useAuth();
@@ -55,8 +56,20 @@ const Perfil = () => {
   };
 
   const handleLogout = () => {
-    logout();
-    navigate('/');
+    Swal.fire({
+      title: '¿Cerrar sesión?',
+      text: 'Tu sesión se cerrará y volverás a la página de inicio.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, cerrar',
+      cancelButtonText: 'Cancelar',
+    }).then((result) => {
+      if (result.isConfirmed) {
+        logout();
+        navigate('/');
+        Swal.fire('Sesión cerrada', 'Has salido correctamente.', 'success');
+      }
+    });
   };
 
   if (!user) {
