@@ -4,7 +4,7 @@ import { useAuth } from '../AuthContext';
 import './Navbar.css';
 
 const Navbar = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   return (
     <nav className="navbar navbar-expand-lg navbar-dark navbar-custom">
@@ -92,7 +92,18 @@ const Navbar = () => {
                   <NavLink className="nav-link" to="/desarrollador">Desarrollador</NavLink>
                 </li>
                 <li className="nav-item">
-                  <NavLink className="nav-link" to="/perfil">{user.name || user.email}</NavLink>
+                  <div className="nav-link dropdown">
+                    <span className="dropdown-toggle" href="#" id="usuarioDropdown" data-bs-toggle="dropdown" role="button" aria-expanded="false">
+                      {user.email}
+                    </span>
+                    <ul className="dropdown-menu dropdown-menu-end" aria-labelledby="usuarioDropdown">
+                      <li><NavLink className="dropdown-item" to="/perfil">Perfil</NavLink></li>
+                      <li><hr className="dropdown-divider" /></li>
+                      <li><button className="dropdown-item" onClick={() => { logout(); }}>
+                        Cerrar Sesión
+                      </button></li>
+                    </ul>
+                  </div>
                 </li>
               </>
             ) : (
