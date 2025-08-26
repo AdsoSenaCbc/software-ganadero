@@ -7,7 +7,7 @@ import './Perfil.css';
 import Swal from 'sweetalert2';
 
 const Perfil = () => {
-  const { user, updateProfileImage, logout, login } = useAuth();
+  const { user, token, logout, login } = useAuth();
   const navigate = useNavigate();
   const [imagePreview, setImagePreview] = useState(user?.profileImage || null);
   const [isEditing, setIsEditing] = useState(false);
@@ -17,17 +17,61 @@ const Perfil = () => {
     email: user?.email || '',
   });
   const [errors, setErrors] = useState({});
+  const [imageMsg, setImageMsg] = useState('Formatos: JPG, PNG, WEBP. Máx 5MB. Óptimo: 500x500px');
+  const [imageError, setImageError] = useState('');
+
+  const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+  const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+
+  // Nombre a mostrar: preferir el nombre editado, luego el del contexto, luego el correo (antes de @)
+  const displayName = (editedUser.name && editedUser.name.trim())
+    ? editedUser.name
+    : (user?.name && user.name.trim())
+      ? user.name
+      : (user?.email ? user.email.split('@')[0] : 'Usuario');
 
   const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-        updateProfileImage(reader.result);
-      };
-      reader.readAsDataURL(file);
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    // Reset messages
+    setImageError('');
+
+    // Type validation
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      setImageError('Formato no permitido. Usa JPG, PNG o WEBP.');
+      return;
     }
+
+    // Size validation
+    if (file.size > MAX_SIZE_BYTES) {
+      setImageError('El archivo supera 5MB. Reduce el tamaño e inténtalo de nuevo.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      // Dimension validation via Image()
+      const img = new Image();
+      img.onload = () => {
+        // Ocultar mensajes de dimensiones tras carga exitosa
+        setImageMsg('');
+        setImagePreview(dataUrl);
+      };
+      img.onerror = () => {
+        setImageError('No se pudo leer la imagen. Intenta con otro archivo.');
+      };
+      img.src = dataUrl;
+    };
+    reader.onerror = () => setImageError('Error leyendo el archivo.');
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = () => {
+    setImagePreview(null);
+    setImageMsg('Formatos: JPG, PNG, WEBP. Máx 5MB. Óptimo: 500x500px');
+    setImageError('');
   };
 
   const handleEditChange = (e) => {
@@ -38,7 +82,6 @@ const Perfil = () => {
   const validateForm = () => {
     const newErrors = {};
     if (!editedUser.name.trim()) newErrors.name = 'El nombre es requerido';
-    if (!editedUser.role.trim()) newErrors.role = 'El rol es requerido';
     if (!editedUser.email.trim()) {
       newErrors.email = 'El correo es requerido';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editedUser.email)) {
@@ -50,9 +93,24 @@ const Perfil = () => {
 
   const handleSave = () => {
     if (validateForm()) {
-      login(editedUser.role, editedUser.name, editedUser.email);
+      // AuthContext.login expects (role, email, accessToken, permisos)
+      // Reutilizamos el token actual y permisos actuales si existen
+      login(user.role, editedUser.email, token, user?.permisos || []);
       setIsEditing(false);
     }
+  };
+
+  const handleStartEdit = () => {
+    // Prefill con datos actuales del usuario
+    const fallbackName = user?.name && user.name.trim()
+      ? user.name
+      : (user?.email ? user.email.split('@')[0] : '');
+    setEditedUser({
+      name: fallbackName,
+      role: user?.role || editedUser.role || '',
+      email: user?.email || editedUser.email || '',
+    });
+    setIsEditing(true);
   };
 
   const handleLogout = () => {
@@ -82,10 +140,10 @@ const Perfil = () => {
       <div className="profile-header">
         <div>
           <h2>Perfil de Usuario</h2>
-          <h4>Bienvenido, {user.name}</h4>
+          <h4>Bienvenido, {displayName}</h4>
         </div>
         {!isEditing && (
-          <button className="btn btn-secondary edit-btn" onClick={() => setIsEditing(true)}>
+          <button className="btn btn-secondary edit-btn" onClick={handleStartEdit}>
             <FaEdit /> Editar Perfil
           </button>
         )}
@@ -100,12 +158,26 @@ const Perfil = () => {
             <input
               type="file"
               id="profileImageInput"
-              accept="image/*"
+              accept=".jpg,.jpeg,.png,.webp"
               onChange={handleImageChange}
               style={{ display: 'none' }}
             />
           </label>
         </div>
+        <div className="upload-hints">
+          {imageError ? (
+            <span className="error-text">{imageError}</span>
+          ) : (!imagePreview && imageMsg ? (
+            <span className="hint-text">{imageMsg}</span>
+          ) : null)}
+        </div>
+        {imagePreview && (
+          <div className="image-actions">
+            <button type="button" className="btn btn-outline-danger remove-image-btn" onClick={handleRemoveImage}>
+              Eliminar foto
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Sección de Información del Usuario */}
@@ -132,16 +204,13 @@ const Perfil = () => {
                 <FaTag className="profile-icon" />
                 <span>Rol:</span>
               </div>
-              <select
-                name="role"
-                value={editedUser.role}
-                onChange={handleEditChange}
+              <input
+                type="text"
+                value={user.role}
                 className="profile-input"
-              >
-                <option value="aprendiz">Aprendiz</option>
-                <option value="instructor">Instructor</option>
-              </select>
-              {errors.role && <div className="text-danger">{errors.role}</div>}
+                disabled
+                readOnly
+              />
             </div>
             <div className="profile-info-item">
               <div className="profile-info-label">
@@ -170,7 +239,7 @@ const Perfil = () => {
                 <FaUser className="profile-icon" />
                 <span>Nombre:</span>
               </div>
-              <div className="profile-info-value">{user.name}</div>
+              <div className="profile-info-value">{displayName}</div>
             </div>
             <div className="profile-info-item">
               <div className="profile-info-label">

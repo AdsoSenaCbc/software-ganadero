@@ -111,6 +111,93 @@
     color: white;
 }
 
+/* Blue action button (theme) */
+.btn-blue {
+    background-color: #00324C;
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    box-shadow: 0 2px 6px rgba(0, 50, 76, 0.25);
+}
+.btn-blue:hover {
+    background-color: #1ab4b4;
+}
+
+/* Shared blocks for improved UI */
+.raciones-step {
+    margin-bottom: 1.5rem;
+    padding: 1.25rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+}
+
+.grid-responsive {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.ingredientes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0.6rem;
+}
+
+.check-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.check-item input { accent-color: #00324C; }
+
+.check-item.checked { border-color: #b6d3ea; box-shadow: 0 2px 8px rgba(0,50,76,0.08); }
+
+.muted { color: #64748b; }
+
+.kv-table { margin-top: 0.5rem; }
+
+.kv {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    border-bottom: 1px dashed #e5e7eb;
+}
+
+.kv:last-child { border-bottom: 0; }
+
+.pill {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    border: 1px solid transparent;
+}
+
+.pill.ok { background: #e8f7ef; color: #166534; border-color: #86efac; }
+
+.pill.bad { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+
+.secondary-btn {
+    background: #f8fafc;
+    color: #0f172a;
+    border: 1px solid #e5e7eb;
+    padding: 0.45rem 0.8rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.secondary-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
 @media (max-width: 768px) {
     .raciones-title {
         font-size: 2rem;
@@ -127,4 +214,5 @@
 
     .nav-link {
         margin: 0 0.5rem;
-    } }
+    }
+}

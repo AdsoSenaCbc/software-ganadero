@@ -148,8 +148,9 @@ const IniciarSesion = () => {
           if (status === 200) {
             const { access_token, usuario } = data;
             const registeredRole = usuario.rol;
+            const permisos = Array.isArray(usuario.permisos) ? usuario.permisos : [];
 
-            login(registeredRole, loginEmail, access_token);
+            login(registeredRole, loginEmail, access_token, permisos);
             if (registeredRole === "Aprendiz" || registeredRole === "Instructor") {
               Swal.fire({
                 title: "Inicio de Sesión",
@@ -417,15 +418,31 @@ const IniciarSesion = () => {
   );
 };
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, roleRequired, permissionsRequired }) => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading) return;
+    if (!user) {
       navigate("/iniciar-sesion");
+      return;
     }
-  }, [user, loading, navigate]);
+    // Role check
+    if (roleRequired && user.role !== roleRequired) {
+      navigate("/forbidden");
+      return;
+    }
+    // Permissions check (any of)
+    if (Array.isArray(permissionsRequired) && permissionsRequired.length > 0) {
+      const have = Array.isArray(user.permisos) ? user.permisos : [];
+      const ok = have.some(p => permissionsRequired.includes(p)) || user.role === 'Instructor';
+      if (!ok) {
+        navigate("/forbidden");
+        return;
+      }
+    }
+  }, [user, loading, navigate, roleRequired, permissionsRequired]);
 
   return !loading && user ? children : null;
 };
@@ -440,6 +457,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Inicio />} />
               <Route path="/iniciar-sesion" element={<IniciarSesion />} />
+              <Route path="/forbidden" element={<div><h2>Acceso denegado (403)</h2><p>No tienes permisos para acceder a esta sección.</p></div>} />
               <Route
                 path="/cambiar-contrasena"
                 element={

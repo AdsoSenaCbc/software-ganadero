@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Swal from 'sweetalert2/dist/sweetalert2.js';
@@ -39,6 +39,70 @@ export default function RegistrarAnimal() {
   const [formData, setFormData] = useState(emptyForm);
   const [errors, setErrors] = useState({});
   const [savedId, setSavedId] = useState(null);
+  // Modal de consulta
+  const [showModal, setShowModal] = useState(false);
+  const [selectedAnimal, setSelectedAnimal] = useState(null);
+
+  // Listado y modal de consulta
+  const [animals, setAnimals] = useState([]);
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState(null);
+
+  // filtros
+  const [filterIdent, setFilterIdent] = useState('');
+  const [filterNombre, setFilterNombre] = useState('');
+  const [filterEspecie, setFilterEspecie] = useState('');
+
+  const loadAnimals = async () => {
+    setListLoading(true);
+    setListError(null);
+    try {
+      const { data } = await axiosInstance.get(API_ROUTES.ANIMALES, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const items = Array.isArray(data) ? data : (data?.items || []);
+      // Si el listado viene resumido, enriquecemos con GET por id similar a Hacienda
+      const needsEnrich = items.some(
+        (a) => a.id_raza === undefined && a.id_especie === undefined && a.id_estado === undefined
+      );
+      if (!needsEnrich) {
+        setAnimals(items);
+      } else {
+        const headers = { Authorization: `Bearer ${token}` };
+        const enriched = await Promise.all(
+          items.map(async (a) => {
+            const id = a.id_animal || a.id;
+            if (!id) return a;
+            try {
+              const { data: full } = await axiosInstance.get(`${API_ROUTES.ANIMALES_CRUD}${id}`, { headers });
+              return { ...a, ...full };
+            } catch (_) {
+              return a;
+            }
+          })
+        );
+        setAnimals(enriched);
+      }
+    } catch (err) {
+      console.error('Error cargando animales:', err);
+      setListError(err.response?.data?.message || err.message);
+    } finally {
+      setListLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token) loadAnimals();
+  }, [token]);
+
+  // Cerrar modal con tecla ESC
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') setShowModal(false);
+    };
+    if (showModal) window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showModal]);
 
   /* ------------ helpers ------------ */
   const handleChange = (e) => {
@@ -73,7 +137,7 @@ export default function RegistrarAnimal() {
   const handleSave = async () => {
     if (!validate()) return;
     try {
-            // Preparamos payload seguro
+      // Preparamos payload seguro
       const payload = {
         ...formData,
         id_hacienda: formData.id_hacienda ? Number(formData.id_hacienda) : null,
@@ -84,20 +148,27 @@ export default function RegistrarAnimal() {
         id_etapa: formData.id_etapa ? Number(formData.id_etapa) : null,
         peso: formData.peso ? Number(formData.peso) : null,
       };
-      const { data } = await axiosInstance.post(API_ROUTES.ANIMALES_CRUD, payload, {
+      const url = savedId
+        ? `${API_ROUTES.ANIMALES_CRUD}${savedId}`
+        : API_ROUTES.ANIMALES_CRUD;
+      const method = savedId ? 'put' : 'post';
+      const { data } = await axiosInstance[method](url, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setSavedId(data.id_animal || data.id);
-      Swal.fire('Éxito', 'Animal registrado', 'success');
+      const newId = data.id_animal || data.id || savedId;
+      setSavedId(newId);
+      Swal.fire('Éxito', savedId ? 'Animal actualizado' : 'Animal registrado', 'success');
+      loadAnimals();
     } catch (err) {
       console.error(err);
       Swal.fire('Error', err.response?.data?.message || 'No se pudo guardar', 'error');
     }
   };
 
-  const handleDelete = async () => {
-    if (!savedId) {
-      Swal.fire('Info', 'No hay registro guardado para eliminar', 'info');
+  const handleDelete = async (id) => {
+    const targetId = id || savedId;
+    if (!targetId) {
+      Swal.fire('Info', 'No hay registro para eliminar', 'info');
       return;
     }
     const { isConfirmed } = await Swal.fire({
@@ -111,12 +182,17 @@ export default function RegistrarAnimal() {
     if (!isConfirmed) return;
 
     try {
-      await axiosInstance.delete(`${API_ROUTES.ANIMALES_CRUD}${savedId}`, {
+      await axiosInstance.delete(`${API_ROUTES.ANIMALES_CRUD}${targetId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       Swal.fire('Eliminado', 'Animal eliminado', 'success');
-      setFormData(emptyForm);
-      setSavedId(null);
+      // Si el registro eliminado es el que está cargado en el formulario, limpiar
+      if (savedId && String(savedId) === String(targetId)) {
+        setFormData(emptyForm);
+        setSavedId(null);
+      }
+      // Refrescar listado (o filtrar en memoria)
+      setAnimals((prev) => prev.filter((x) => (x.id_animal || x.id) !== targetId));
     } catch (err) {
       console.error(err);
       Swal.fire('Error', err.response?.data?.message || 'No se pudo eliminar', 'error');
@@ -148,140 +224,331 @@ export default function RegistrarAnimal() {
   };
 
   /* ------------ render ------------ */
+  const { razas = [], sexos = [], especies = [], estados = [], etapas = [], haciendas = [] } = lists;
+
+  // Mapas auxiliares para etiquetas
+  const especiesById = useMemo(() => {
+    const map = new Map();
+    (especies || []).forEach((e) => map.set(e.id_especie, e.nombre));
+    return map;
+  }, [especies]);
+  const razasById = useMemo(() => {
+    const map = new Map();
+    (razas || []).forEach((r) => map.set(r.id_raza, r.nombre));
+    return map;
+  }, [razas]);
+  const sexosById = useMemo(() => {
+    const map = new Map();
+    (sexos || []).forEach((s) => map.set(s.id_sexo, s.nombre));
+    return map;
+  }, [sexos]);
+  const estadosById = useMemo(() => {
+    const map = new Map();
+    (estados || []).forEach((e) => map.set(e.id_estado, e.nombre_estado || e.nombre));
+    return map;
+  }, [estados]);
+  const etapasById = useMemo(() => {
+    const map = new Map();
+    (etapas || []).forEach((et) => map.set(et.id_etapa, et.nombre));
+    return map;
+  }, [etapas]);
+  const haciendasById = useMemo(() => {
+    const map = new Map();
+    (haciendas || []).forEach((h) => map.set(String(h.id_hacienda), h.nombre));
+    return map;
+  }, [haciendas]);
+
+  const animalesFiltrados = useMemo(() => {
+    return (animals || []).filter((a) => {
+      const ident = (a.identificador_unico || '').toLowerCase();
+      const nom = (a.nombre || '').toLowerCase();
+      const esp = a.id_especie ? String(a.id_especie) : '';
+      const passIdent = !filterIdent || ident.includes(filterIdent.toLowerCase());
+      const passNom = !filterNombre || nom.includes(filterNombre.toLowerCase());
+      const passEsp = !filterEspecie || esp === String(filterEspecie);
+      return passIdent && passNom && passEsp;
+    });
+  }, [animals, filterIdent, filterNombre, filterEspecie]);
+
+  const resetFilters = () => {
+    setFilterIdent('');
+    setFilterNombre('');
+    setFilterEspecie('');
+  };
+
+  // Early returns AFTER hooks to satisfy rules-of-hooks
   if (loading) return <p>Cargando listas...</p>;
   if (error) return <p>Error cargando listas: {error}</p>;
 
-  const { razas = [], sexos = [], especies = [], estados = [], etapas = [], haciendas = [] } = lists;
-
   return (
     <div className="animal-container">
-      <h2>Registro de Animal</h2>
+      <div className="animal-header">
+        <h2>Registro de Animal</h2>
+      </div>
 
-      {/* Identificación */}
-      <div className="form-row">
-        <div className="form-group">
-          <label><FaTag /> Identificador *</label>
-          <input name="identificador_unico" value={formData.identificador_unico} onChange={handleChange} />
-          {errors.identificador_unico && <span className="error-message">{errors.identificador_unico}</span>}
+      <div className="animal-form">
+        {/* Identificación */}
+        <div className="form-row">
+          <div className="form-group">
+            <label><FaTag /> Identificador *</label>
+            <input name="identificador_unico" value={formData.identificador_unico} onChange={handleChange} />
+            {errors.identificador_unico && <span className="error-message">{errors.identificador_unico}</span>}
+          </div>
+          <div className="form-group">
+            <label>Nombre *</label>
+            <input name="nombre" value={formData.nombre} onChange={handleChange} />
+            {errors.nombre && <span className="error-message">{errors.nombre}</span>}
+          </div>
         </div>
-        <div className="form-group">
-          <label>Nombre *</label>
-          <input name="nombre" value={formData.nombre} onChange={handleChange} />
-          {errors.nombre && <span className="error-message">{errors.nombre}</span>}
+
+        {/* Selecciones 1 */}
+        <div className="form-row">
+          <div className="form-group">
+            <label><FaPaw /> Especie *</label>
+            <select name="id_especie" value={formData.id_especie} onChange={handleChange}>
+              <option value="">Seleccione</option>
+              {especies.map((e) => <option key={e.id_especie} value={e.id_especie}>{e.nombre}</option>)}
+            </select>
+            {errors.id_especie && <span className="error-message">{errors.id_especie}</span>}
+          </div>
+          <div className="form-group">
+            <label>Raza *</label>
+            <select name="id_raza" value={formData.id_raza} onChange={handleChange}>
+              <option value="">Seleccione</option>
+              {razas.map((r) => <option key={r.id_raza} value={r.id_raza}>{r.nombre}</option>)}
+            </select>
+            {errors.id_raza && <span className="error-message">{errors.id_raza}</span>}
+          </div>
+        </div>
+
+        {/* Selecciones 2 */}
+        <div className="form-row">
+          <div className="form-group">
+            <label><FaVenusMars /> Sexo *</label>
+            <select name="id_sexo" value={formData.id_sexo} onChange={handleChange}>
+              <option value="">Seleccione</option>
+              {sexos.map((s) => <option key={s.id_sexo} value={s.id_sexo}>{s.nombre}</option>)}
+            </select>
+            {errors.id_sexo && <span className="error-message">{errors.id_sexo}</span>}
+          </div>
+          <div className="form-group">
+            <label><FaWeight /> Peso (kg) *</label>
+            <input type="number" name="peso" value={formData.peso} onChange={handleChange} />
+            {errors.peso && <span className="error-message">{errors.peso}</span>}
+          </div>
+        </div>
+
+        {/* Selecciones 3 */}
+        <div className="form-row">
+          <div className="form-group">
+            <label><FaLeaf /> Hacienda *</label>
+            <select name="id_hacienda" value={formData.id_hacienda} onChange={handleChange}>
+              <option value="">Seleccione</option>
+              {haciendas.map((h) => (
+                <option key={h.id_hacienda} value={h.id_hacienda}>
+                  {h.nombre}
+                </option>
+              ))}
+            </select>
+            {errors.id_hacienda && (
+              <span className="error-message">{errors.id_hacienda}</span>
+            )}
+          </div>
+          <div className="form-group">
+            <label>Estado *</label>
+            <select name="id_estado" value={formData.id_estado} onChange={handleChange}>
+              <option value="">Seleccione</option>
+              {estados.map((e) => (
+                <option key={e.id_estado} value={e.id_estado}>
+                  {e.nombre_estado || e.nombre}
+                </option>
+              ))}
+            </select>
+            {errors.id_estado && (
+              <span className="error-message">{errors.id_estado}</span>
+            )}
+          </div>
+          <div className="form-group">
+            <label><FaBaby /> Etapa *</label>
+            <select name="id_etapa" value={formData.id_etapa} onChange={handleChange}>
+              <option value="">Seleccione</option>
+              {etapas.map((et) => (
+                <option key={et.id_etapa} value={et.id_etapa}>
+                  {et.nombre}
+                </option>
+              ))}
+            </select>
+            {errors.id_etapa && (
+              <span className="error-message">{errors.id_etapa}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Observaciones */}
+        <div className="form-row">
+          <div className="form-group" style={{ flex: '1 1 100%' }}>
+            <label>Observaciones</label>
+            <textarea
+              name="observaciones"
+              rows="3"
+              value={formData.observaciones}
+              onChange={handleChange}
+            />
+          </div>
+        </div>
+
+        {/* Botones */}
+        <div className="animal-actions">
+          <button className="btn btn-primary" onClick={handleSave}>
+            Guardar
+          </button>
+          <button className="btn btn-info" onClick={handlePrint}>
+            Imprimir
+          </button>
+          <button className="btn btn-success" onClick={handleDownload}>
+            Descargar
+          </button>
+          <button className="btn btn-danger" onClick={handleDelete}>
+            Eliminar
+          </button>
         </div>
       </div>
 
-      {/* Selecciones 1 */}
-      <div className="form-row">
-        <div className="form-group">
-          <label><FaPaw /> Especie *</label>
-          <select name="id_especie" value={formData.id_especie} onChange={handleChange}>
-            <option value="">Seleccione</option>
-            {especies.map((e) => <option key={e.id_especie} value={e.id_especie}>{e.nombre}</option>)}
-          </select>
-          {errors.id_especie && <span className="error-message">{errors.id_especie}</span>}
-        </div>
-        <div className="form-group">
-          <label>Raza *</label>
-          <select name="id_raza" value={formData.id_raza} onChange={handleChange}>
-            <option value="">Seleccione</option>
-            {razas.map((r) => <option key={r.id_raza} value={r.id_raza}>{r.nombre}</option>)}
-          </select>
-          {errors.id_raza && <span className="error-message">{errors.id_raza}</span>}
-        </div>
+      {/* Listado de Animales (estilo Hacienda) */}
+      <div className="hacienda-list">
+        <h3>Información de Animales</h3>
+        {listLoading && <p>Cargando registros...</p>}
+        {listError && <p className="error-message">{listError}</p>}
+        {!listLoading && !listError && (
+          <>
+            {/* Filtros */}
+            <div className="filter-bar">
+              <div className="filter-controls">
+                <div className="filter-item">
+                  <label>Identificador</label>
+                  <input type="text" placeholder="Código o arete" value={filterIdent} onChange={(e)=>setFilterIdent(e.target.value)} />
+                </div>
+                <div className="filter-item">
+                  <label>Nombre</label>
+                  <input type="text" placeholder="Nombre" value={filterNombre} onChange={(e)=>setFilterNombre(e.target.value)} />
+                </div>
+                <div className="filter-item">
+                  <label>Especie</label>
+                  <select value={filterEspecie} onChange={(e)=>setFilterEspecie(e.target.value)}>
+                    <option value="">Todas</option>
+                    {especies.map((e)=> <option key={e.id_especie} value={e.id_especie}>{e.nombre}</option>)}
+                  </select>
+                </div>
+                {/* Filtro por Hacienda removido por requerimiento */}
+                <div className="filter-actions">
+                  <button className="btn" onClick={resetFilters}>Reiniciar</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Grid de tarjetas */}
+            <div className="card-grid">
+              {animalesFiltrados.length === 0 && (
+                <div className="empty">Sin registros</div>
+              )}
+              {animalesFiltrados.map((a) => {
+                const id = a.id_animal || a.id;
+                return (
+                  <div key={id} className="hacienda-card">
+                    <div className="card-header">
+                      <span className="chip">{id}</span>
+                      <h4 className="card-title">{a.nombre || 'Sin nombre'}</h4>
+                      <div className="card-subtitle">{especiesById.get(a.id_especie) || '-'}</div>
+                    </div>
+                    <div className="card-body">
+                      <div className="info-row">
+                        <FaTag className="icon" />
+                        <span className="label">Identificador</span>
+                        <span className="value">{a.identificador_unico || '-'}</span>
+                      </div>
+                      <div className="info-row">
+                        <FaWeight className="icon" />
+                        <span className="label">Peso</span>
+                        <span className="value">{a.peso ?? '-'} kg</span>
+                      </div>
+                      <div className="info-row">
+                        <FaLeaf className="icon" />
+                        <span className="label">Hacienda</span>
+                        <span className="value">{haciendasById.get(String(a.id_hacienda)) || '-'}</span>
+                      </div>
+                    </div>
+                    <div className="card-actions">
+                      <button
+                        className="btn btn-info"
+                        onClick={() => {
+                          setSelectedAnimal(a);
+                          setShowModal(true);
+                        }}
+                      >Consultar</button>
+                      <button
+                        className="btn btn-warning"
+                        onClick={() => {
+                          setFormData({
+                            identificador_unico: a.identificador_unico || '',
+                            nombre: a.nombre || '',
+                            peso: a.peso?.toString() || '',
+                            observaciones: a.observaciones || '',
+                            id_raza: a.id_raza?.toString() || '',
+                            id_sexo: a.id_sexo?.toString() || '',
+                            id_especie: a.id_especie?.toString() || '',
+                            id_estado: a.id_estado?.toString() || '',
+                            id_hacienda: a.id_hacienda?.toString() || '',
+                            id_etapa: a.id_etapa?.toString() || '',
+                          });
+                          setErrors({});
+                          setSavedId(id);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                      >Actualizar</button>
+                      <button className="btn btn-danger" onClick={() => handleDelete(a.id_animal || a.id)}>Eliminar</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Selecciones 2 */}
-      <div className="form-row">
-        <div className="form-group">
-          <label><FaVenusMars /> Sexo *</label>
-          <select name="id_sexo" value={formData.id_sexo} onChange={handleChange}>
-            <option value="">Seleccione</option>
-            {sexos.map((s) => <option key={s.id_sexo} value={s.id_sexo}>{s.nombre}</option>)}
-          </select>
-          {errors.id_sexo && <span className="error-message">{errors.id_sexo}</span>}
+      {/* Modal de Consulta */}
+      {showModal && selectedAnimal && (
+        <div
+          className="modal-overlay"
+          onClick={() => setShowModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="animal-modal-title"
+        >
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 id="animal-modal-title" style={{ margin: 0 }}>{selectedAnimal.nombre || 'Detalle de Animal'}</h3>
+              <button className="btn" onClick={() => setShowModal(false)} aria-label="Cerrar">✕</button>
+            </div>
+            <div className="modal-body">
+              <hr className="modal-divider" />
+              <div className="modal-details">
+                <div className="detail"><span className="label">Identificador</span><span className="value">{selectedAnimal.identificador_unico || '-'}</span></div>
+                <div className="detail"><span className="label">Especie</span><span className="value">{especiesById.get(selectedAnimal.id_especie) || '-'}</span></div>
+                <div className="detail"><span className="label">Raza</span><span className="value">{razasById.get(selectedAnimal.id_raza) || '-'}</span></div>
+                <div className="detail"><span className="label">Sexo</span><span className="value">{sexosById.get(selectedAnimal.id_sexo) || '-'}</span></div>
+                <div className="detail"><span className="label">Peso</span><span className="value">{selectedAnimal.peso ?? '-'} kg</span></div>
+                <div className="detail"><span className="label">Estado</span><span className="value">{estadosById.get(selectedAnimal.id_estado) || '-'}</span></div>
+                <div className="detail"><span className="label">Etapa</span><span className="value">{etapasById.get(selectedAnimal.id_etapa) || '-'}</span></div>
+                <div className="detail"><span className="label">Hacienda</span><span className="value">{haciendasById.get(String(selectedAnimal.id_hacienda)) || '-'}</span></div>
+                <div className="detail detail--full"><span className="label">Observaciones</span><span className="value">{selectedAnimal.observaciones || '-'}</span></div>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-primary" onClick={() => setShowModal(false)}>Cerrar</button>
+            </div>
+          </div>
         </div>
-        <div className="form-group">
-          <label><FaWeight /> Peso (kg) *</label>
-          <input type="number" name="peso" value={formData.peso} onChange={handleChange} />
-          {errors.peso && <span className="error-message">{errors.peso}</span>}
-        </div>
-      </div>
-
-      {/* Selecciones 3 */}
-      <div className="form-row">
-        <div className="form-group">
-          <label><FaLeaf /> Hacienda *</label>
-          <select name="id_hacienda" value={formData.id_hacienda} onChange={handleChange}>
-            <option value="">Seleccione</option>
-            {haciendas.map((h) => (
-              <option key={h.id_hacienda} value={h.id_hacienda}>
-                {h.nombre}
-              </option>
-            ))}
-          </select>
-          {errors.id_hacienda && (
-            <span className="error-message">{errors.id_hacienda}</span>
-          )}
-        </div>
-        <div className="form-group">
-          <label>Estado *</label>
-          <select name="id_estado" value={formData.id_estado} onChange={handleChange}>
-            <option value="">Seleccione</option>
-            {estados.map((e) => (
-              <option key={e.id_estado} value={e.id_estado}>
-                {e.nombre_estado || e.nombre}
-              </option>
-            ))}
-          </select>
-          {errors.id_estado && (
-            <span className="error-message">{errors.id_estado}</span>
-          )}
-        </div>
-        <div className="form-group">
-          <label><FaBaby /> Etapa *</label>
-          <select name="id_etapa" value={formData.id_etapa} onChange={handleChange}>
-            <option value="">Seleccione</option>
-            {etapas.map((et) => (
-              <option key={et.id_etapa} value={et.id_etapa}>
-                {et.nombre}
-              </option>
-            ))}
-          </select>
-          {errors.id_etapa && (
-            <span className="error-message">{errors.id_etapa}</span>
-          )}
-        </div>
-      </div>
-
-      {/* Observaciones */}
-      <div className="form-row">
-        <div className="form-group" style={{ flex: '1 1 100%' }}>
-          <label>Observaciones</label>
-          <textarea
-            name="observaciones"
-            rows="3"
-            value={formData.observaciones}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
-
-      {/* Botones */}
-      <div className="animal-actions">
-        <button className="btn btn-primary" onClick={handleSave}>
-          Guardar
-        </button>
-        <button className="btn btn-info" onClick={handlePrint}>
-          Imprimir
-        </button>
-        <button className="btn btn-success" onClick={handleDownload}>
-          Descargar
-        </button>
-        <button className="btn btn-danger" onClick={handleDelete}>
-          Eliminar
-        </button>
-      </div>
+      )}
     </div>
   );
 }

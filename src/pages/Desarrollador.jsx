@@ -9,15 +9,15 @@ const Desarrollador = () => {
 
   const handleDocumentation = () => {
     Swal.fire({
-      title: 'Descargando Documentación',
-      text: 'La documentación de Bovinos Pro v1.0 se está descargando...',
+      title: 'Redirigiendo a la documentación',
+      text: 'Cargando documentación...',
       icon: 'info',
       confirmButtonText: 'Aceptar',
     }).then(() => {
       // Simulación de descarga (en un proyecto real, aquí iría la lógica de descarga)
       const link = document.createElement('a');
-      link.href = 'https://example.com/bovinos-documentation.pdf'; // URL ficticia
-      link.download = 'Bovinos_Pro_v1.0_Documentation.pdf';
+      link.href = 'https://adsosenacbc.github.io/manuales_software_ganadero/'; 
+      link.download = 'Documentacion de manuales';
       link.click();
     });
   };
@@ -29,7 +29,7 @@ const Desarrollador = () => {
       icon: 'info',
       confirmButtonText: 'Aceptar',
     }).then(() => {
-      window.open('https://github.com/AdsoSenaCbc/software-ganadero.git', '_blank');
+      window.open('https://github.com/AdsoSenaCbc', '_blank');
     });
   };
 
@@ -75,12 +75,6 @@ const Desarrollador = () => {
             <li>
               <span className="contact-icon">📍</span> Dirección: Km. 7 Vía a La Paz Valledupar
             </li>
-            <li>
-              <span className="contact-icon">🌐</span> Sitio Web: <a href="https://adsosenacbc.github.io/SoftwareCalculoRaciones/" target="_blank" rel="noopener noreferrer">https://adsosenacbc.github.io/SoftwareCalculoRaciones/</a>
-            </li>
-            <li>
-              <span className="contact-icon">💻</span> GitHub: <a href="https://github.com/cbc-software" target="_blank" rel="noopener noreferrer">https://github.com/AdsoSenaCbc/software-ganadero</a>
-            </li>
           </ul>
         </section>
 
@@ -88,10 +82,10 @@ const Desarrollador = () => {
           <h2>Recursos</h2>
           <div className="action-buttons">
             <button className="btn btn-documentation" onClick={handleDocumentation}>
-              Documentación
+              Manuales
             </button>
             <button className="btn btn-source" onClick={handleSourceCode}>
-              Código Fuente
+              Git Hub
             </button>
           </div>
         </section>

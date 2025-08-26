@@ -8,8 +8,8 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(localStorage.getItem("token") || null);
   const [loading, setLoading] = useState(true);
 
-  const login = (role, email, accessToken) => {
-    setUser({ role, email });
+  const login = (role, email, accessToken, permisos = []) => {
+    setUser({ role, email, permisos });
     setToken(accessToken);
     localStorage.setItem("token", accessToken);
   };
@@ -35,7 +35,8 @@ export function AuthProvider({ children }) {
           }
           const role = decodedToken.rol;
           const email = decodedToken.email;
-          setUser({ role, email });
+          const permisos = Array.isArray(decodedToken.permisos) ? decodedToken.permisos : [];
+          setUser({ role, email, permisos });
           setToken(storedToken);
         } catch (error) {
           logout();

@@ -46,6 +46,7 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     border-radius: 8px;
     overflow: hidden;
+    table-layout: auto;
 }
 
 .input-table th,
@@ -61,6 +62,24 @@
 .info-table td {
     padding: 1rem;
     border-bottom: 1px solid #ddd;
+}
+
+/* Sticky first column for readability on wide tables */
+.info-table th:first-child,
+.info-table td:first-child {
+    position: sticky;
+    left: 0;
+}
+/* Keep header cell styled like other headers */
+.info-table th:first-child {
+    background: #004b73; /* same as header */
+    color: #fff;
+    z-index: 3;
+}
+/* Data cells remain white */
+.info-table td:first-child {
+    background: #fff;
+    z-index: 2;
 }
 
 .input-table input {
@@ -105,6 +124,55 @@
     background-color: #1ab4b4;
 }
 
+/* Secondary button */
+.btn-secondary {
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background-color: #f1f5f9;
+    color: #0f172a;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+    margin-left: 0.75rem;
+}
+.btn-secondary:hover {
+    background-color: #e2e8f0;
+    border-color: #94a3b8;
+}
+
+/* Filters layout */
+.filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+    margin-top: 1rem;
+}
+.filter-item {
+    display: flex;
+    flex-direction: column;
+    min-width: 160px;
+}
+.filter-item label {
+    font-size: 0.9rem;
+    color: #334155;
+    margin-bottom: 0.25rem;
+}
+.filter-item select,
+.filter-item input[type="number"] {
+    padding: 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.95rem;
+}
+
+/* Numeric alignment */
+.info-table td.numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 768px) {
 
     .input-table th,
@@ -122,4 +190,13 @@
     .btn-primary {
         width: 100%;
         text-align: center;
-    } }
+    }
+    .filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .filter-item {
+        min-width: unset;
+        width: 100%;
+    }
+}

@@ -17,7 +17,6 @@ export const axiosAuth = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: true,
 });
 
 // Interceptor para adjuntar token de acceso
@@ -34,8 +33,22 @@ axiosAuth.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response && error.response.status === 401) {
-      // TODO: implementar refresh token si lo añades al backend
-      localStorage.removeItem("token");
+      // Limpiar sesión y redirigir al login
+      try { localStorage.removeItem("token"); } catch (_) {}
+      // Evitar múltiples redirecciones en paralelo
+      if (typeof window !== 'undefined') {
+        const current = window.location.pathname;
+        if (!current.includes('/iniciar-sesion')) {
+          window.location.assign('/iniciar-sesion');
+        }
+      }
+    } else if (error.response && error.response.status === 403) {
+      if (typeof window !== 'undefined') {
+        const current = window.location.pathname;
+        if (!current.includes('/forbidden')) {
+          window.location.assign('/forbidden');
+        }
+      }
     }
     return Promise.reject(error);
   }
@@ -43,8 +56,6 @@ axiosAuth.interceptors.response.use(
 
 // Exportar por defecto la instancia autenticada para mantener compatibilidad
 export default axiosAuth;
-
-
 
 // Rutas base de los recursos API
 export const API_ROUTES = {
@@ -55,8 +66,9 @@ export const API_ROUTES = {
   HACIENDAS_CRUD: `${baseURL}/haciendas/`,
   // Endpoints protegidos (JWT)
   // Lista y CRUD de animales (protegido)
-  ANIMALES_CRUD: `${baseURL}/animals/`,
-  ANIMALES: `${baseURL}/animal`,
+  // Backend blueprint prefix: '/api/animals' with routes '/', '/<id>'
+  ANIMALES: `${baseURL}/animals/`, // GET list, POST create
+  ANIMALES_CRUD: `${baseURL}/animals/`, // base for GET detail, DELETE: `${...}/:id`
   RAZAS: `${baseURL}/razas/list`,
   SEXOS: `${baseURL}/sexos/list`,
   ESPECIES: `${baseURL}/especies/list`,

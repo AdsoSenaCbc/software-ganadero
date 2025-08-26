@@ -3,282 +3,746 @@ import { Link } from 'react-router-dom';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
 import './RacionesLactancia.css';
-import { BsCup } from 'react-icons/bs';
+ 
 
+import { GiMeal, GiCow } from 'react-icons/gi';
+import { MdBolt } from 'react-icons/md';
+import { apiUrl, authHeader } from '../../api/api';
+
+/******************************* Helpers *******************************/
+const initialForm = {
+  id_animal: '',
+  id_requerimiento: '',
+  fecha_calculo: '',
+  ms_total: '',
+  produccion_leche: '',
+  grasa_pct: '',
+  calculado_por: '',
+  observaciones: '',
+};
+
+const emptyResults = {
+  infoAnimal: {},
+  requerimientosEnergeticos: {},
+  requerimientosProteicos: {},
+};
+
+/**
+ * -----------------------------
+ * Helper formatters (module-scope)
+ * -----------------------------
+ */
+// Etiquetas enriquecidas para selects de requerimientos
+const fmtReqLabel = (r) => {
+  if (!r) return '';
+  if (r.descripcion) return r.descripcion;
+  const parts = [];
+  if (r.etapa || r.id_etapa) parts.push(`Etapa ${r.etapa ?? r.id_etapa}`);
+  if (r.peso_min != null || r.peso_max != null) parts.push(`Peso ${r.peso_min ?? '?'}–${r.peso_max ?? '?'} kg`);
+  const em = r.EM ?? r.em ?? r.energia_metabolizable;
+  const pc = r.PC ?? r.pc ?? r.proteina_cruda ?? r.proteina_total;
+  const ms = r.MS ?? r.ms ?? r.materia_seca;
+  if (em != null) parts.push(`EM ${em}`);
+  if (pc != null) parts.push(`PC ${pc} g`);
+  if (ms != null) parts.push(`MS ${ms} kg`);
+  return parts.join(' · ') || `Req ${r.id_requerimiento}`;
+};
+
+// Etiquetas para usuarios
+const fmtUserLabel = (u) => {
+  if (!u) return '';
+  const nombre = u.nombre || u.nombres || u.first_name || '';
+  const apellido = u.apellido || u.apellidos || u.last_name || '';
+  const full = [nombre, apellido].filter(Boolean).join(' ').trim();
+  return full || u.username || u.email || `Usuario ${u.id || u.id_usuario}`;
+};
+
+// Etiquetas para animales
+const fmtAnimalLabel = (a) => {
+  if (!a) return '';
+  const nombre = a.nombre || a.identificador_unico || a.codigo || `Animal ${a.id}`;
+  const etapa = a.etapa || (a.id_etapa != null ? `Etapa ${a.id_etapa}` : '');
+  const cat = a.categoria || '';
+  const extra = [etapa, cat].filter(Boolean).join(' · ');
+  return extra ? `${nombre} (${extra})` : nombre;
+};
+
+// Formateador numérico seguro
+const fmt = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toFixed(d);
+
+const ResultCard = ({ title, icon, children }) => (
+  <div className="result-card" data-aos="zoom-in">
+    <div className="result-header">
+      {icon}
+      <h3>{title}</h3>
+    </div>
+    <div>{children}</div>
+  </div>
+);
+
+/******************************* Component *******************************/
 const RacionesLactancia = () => {
+  const resultsRef = React.useRef(null);
+  const [formData, setFormData] = useState(initialForm);
+  const [animales, setAnimales] = useState([]);
+  const [requerimientos, setRequerimientos] = useState([]);
+  const [usuarios, setUsuarios] = useState([]);
+  const [ingredientesDisp, setIngredientesDisp] = useState([]);
+  const [ingredientesSel, setIngredientesSel] = useState([]); // ids seleccionados
+  const [ingredientSearch, setIngredientSearch] = useState('');
+  const [results, setResults] = useState(emptyResults);
+  
+  const [loading, setLoading] = useState(false); // carga inicial de selects
+  const [calculating, setCalculating] = useState(false);
+  const [apiError, setApiError] = useState(null);
+  const [showJson, setShowJson] = useState(false);
+  const [guardar, setGuardar] = useState(true);
+  const [saveMsg, setSaveMsg] = useState('');
+  const [compactView, setCompactView] = useState(true);
+
+  /* -------- Fetch select data on mount -------- */
   useEffect(() => {
-    AOS.init({ duration: 1000 });
+    const fetchSelectData = async () => {
+      setLoading(true);
+      try {
+        const headers = authHeader();
+        const [aRes, rRes, uRes, iRes] = await Promise.all([
+          fetch(apiUrl('/api/animals/'), { headers }),
+          fetch(apiUrl('/api/requerimientos-nutricionales/api'), { headers }),
+          fetch(apiUrl('/api/users/api'), { headers }),
+          fetch(apiUrl('/api/ingredientes/api'), { headers }),
+        ]);
+
+        const safeJson = async (res) => {
+          const ct = res.headers.get('content-type') || '';
+          if (!ct.includes('application/json')) return null;
+          try { return await res.json(); } catch { return null; }
+        };
+
+
+        if (aRes.ok) {
+          const data = await safeJson(aRes);
+          setAnimales(Array.isArray(data) ? data : []);
+        } else if (aRes.status === 401) {
+          setApiError('No autorizado. Inicie sesión nuevamente.');
+        }
+
+        if (rRes.ok) {
+          const data = await safeJson(rRes);
+          setRequerimientos(Array.isArray(data) ? data : []);
+        }
+
+        if (uRes.ok) {
+          const data = await safeJson(uRes);
+          setUsuarios(Array.isArray(data) ? data : []);
+        }
+        if (iRes.ok) {
+          const data = await safeJson(iRes);
+          // Normalizar campos: esperamos id_ingrediente y nombre
+          setIngredientesDisp(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error('Error cargando selects', err);
+        setApiError('Error de red al cargar catálogos.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSelectData();
+    AOS.init({ duration: 700 });
   }, []);
 
-  // Datos simulados de las tablas proporcionadas
-  const nrcLactanciaData = [
-    { id: 1, EN_mcal: 1.8, EM_mcal: 2.9, ED_mcal: 3.2, proteina: 16.5, calcio: 0.8, fosforo: 0.5, vitamina: 12000, MS_kg: 7.2, peso: 550, liquido: 'Suficiente' },
-    { id: 2, EN_mcal: 1.7, EM_mcal: 2.8, ED_mcal: 3.1, proteina: 16.0, calcio: 0.7, fosforo: 0.4, vitamina: 11000, MS_kg: 6.0, peso: 400, liquido: 'Suficiente' },
-    { id: 3, EN_mcal: 1.9, EM_mcal: 3.0, ED_mcal: 3.3, proteina: 17.0, calcio: 0.9, fosforo: 0.6, vitamina: 13000, MS_kg: 7.5, peso: 580, liquido: 'Suficiente' },
-    { id: 4, EN_mcal: 1.8, EM_mcal: 2.9, ED_mcal: 3.2, proteina: 16.2, calcio: 0.8, fosforo: 0.5, vitamina: 12000, MS_kg: 6.8, peso: 510, liquido: 'Suficiente' },
-    { id: 5, EN_mcal: 1.7, EM_mcal: 2.8, ED_mcal: 3.1, proteina: 15.9, calcio: 0.7, fosforo: 0.4, vitamina: 11000, MS_kg: 7.0, peso: 530, liquido: 'Suficiente' },
-    { id: 6, EN_mcal: 1.8, EM_mcal: 2.9, ED_mcal: 3.2, proteina: 16.1, calcio: 0.8, fosforo: 0.5, vitamina: 12000, MS_kg: 6.9, peso: 490, liquido: 'Suficiente' },
-    { id: 7, EN_mcal: 1.7, EM_mcal: 2.8, ED_mcal: 3.1, proteina: 15.7, calcio: 0.7, fosforo: 0.4, vitamina: 11000, MS_kg: 6.3, peso: 440, liquido: 'Suficiente' },
-    { id: 8, EN_mcal: 1.9, EM_mcal: 3.0, ED_mcal: 3.3, proteina: 17.2, calcio: 0.9, fosforo: 0.6, vitamina: 13000, MS_kg: 5.8, peso: 380, liquido: 'Limitado' },
-    { id: 9, EN_mcal: 1.8, EM_mcal: 2.9, ED_mcal: 3.2, proteina: 16.8, calcio: 0.8, fosforo: 0.5, vitamina: 12000, MS_kg: 6.3, peso: 420, liquido: 'Limitado' },
-    { id: 10, EN_mcal: 1.7, EM_mcal: 2.8, ED_mcal: 3.1, proteina: 16.4, calcio: 0.7, fosforo: 0.4, vitamina: 11000, MS_kg: 6.6, peso: 440, liquido: 'Suficiente' },
-    { id: 11, EN_mcal: 1.8, EM_mcal: 2.9, ED_mcal: 3.2, proteina: 16.6, calcio: 0.8, fosforo: 0.5, vitamina: 12000, MS_kg: 6.5, peso: 460, liquido: 'Suficiente' },
-    { id: 12, EN_mcal: 1.9, EM_mcal: 3.0, ED_mcal: 3.3, proteina: 17.5, calcio: 0.9, fosforo: 0.6, vitamina: 13000, MS_kg: 7.2, peso: 550, liquido: 'Suficiente' },
-    { id: 13, EN_mcal: 1.8, EM_mcal: 2.9, ED_mcal: 3.2, proteina: 16.0, calcio: 0.8, fosforo: 0.5, vitamina: 12000, MS_kg: 6.7, peso: 430, liquido: 'Suficiente' },
-    { id: 14, EN_mcal: 1.7, EM_mcal: 2.8, ED_mcal: 3.1, proteina: 15.6, calcio: 0.7, fosforo: 0.4, vitamina: 11000, MS_kg: 7.2, peso: 550, liquido: 'Suficiente' },
-    { id: 15, EN_mcal: 1.9, EM_mcal: 3.0, ED_mcal: 3.3, proteina: 17.1, calcio: 0.9, fosforo: 0.6, vitamina: 13000, MS_kg: 5.5, peso: 390, liquido: 'Limitado' },
-  ];
-
-  const racionLactanciaReqData = [
-    { id_racion_lactancia: 0, peso_animal: 400, produccion_de_leche: 1.7, Sigrasa: 0.5, tabla_nrc_lactancia_id: 2, registro_animal_id: 2 },
-    { id_racion_lactancia: 1, peso_animal: 550, produccion_de_leche: 15.5, Sigrasa: 3.8, tabla_nrc_lactancia_id: 1, registro_animal_id: 2 },
-    { id_racion_lactancia: 2, peso_animal: 400, produccion_de_leche: 12.0, Sigrasa: 3.2, tabla_nrc_lactancia_id: 2, registro_animal_id: 4 },
-    { id_racion_lactancia: 3, peso_animal: 580, produccion_de_leche: 18.0, Sigrasa: 4.2, tabla_nrc_lactancia_id: 3, registro_animal_id: 6 },
-    { id_racion_lactancia: 4, peso_animal: 510, produccion_de_leche: 14.5, Sigrasa: 3.6, tabla_nrc_lactancia_id: 4, registro_animal_id: 8 },
-    { id_racion_lactancia: 5, peso_animal: 530, produccion_de_leche: 15.0, Sigrasa: 3.7, tabla_nrc_lactancia_id: 5, registro_animal_id: 10 },
-    { id_racion_lactancia: 6, peso_animal: 490, produccion_de_leche: 13.5, Sigrasa: 3.4, tabla_nrc_lactancia_id: 6, registro_animal_id: 12 },
-    { id_racion_lactancia: 7, peso_animal: 440, produccion_de_leche: 15.2, Sigrasa: 3.7, tabla_nrc_lactancia_id: 7, registro_animal_id: 14 },
-    { id_racion_lactancia: 8, peso_animal: 380, produccion_de_leche: 10.5, Sigrasa: 2.8, tabla_nrc_lactancia_id: 8, registro_animal_id: 3 },
-    { id_racion_lactancia: 9, peso_animal: 420, produccion_de_leche: 11.5, Sigrasa: 3.0, tabla_nrc_lactancia_id: 9, registro_animal_id: 5 },
-    { id_racion_lactancia: 10, peso_animal: 440, produccion_de_leche: 12.0, Sigrasa: 3.1, tabla_nrc_lactancia_id: 10, registro_animal_id: 7 },
-    { id_racion_lactancia: 11, peso_animal: 460, produccion_de_leche: 12.5, Sigrasa: 3.2, tabla_nrc_lactancia_id: 11, registro_animal_id: 9 },
-    { id_racion_lactancia: 12, peso_animal: 550, produccion_de_leche: 15.5, Sigrasa: 3.8, tabla_nrc_lactancia_id: 12, registro_animal_id: 2 },
-    { id_racion_lactancia: 13, peso_animal: 430, produccion_de_leche: 11.8, Sigrasa: 3.0, tabla_nrc_lactancia_id: 13, registro_animal_id: 11 },
-    { id_racion_lactancia: 14, peso_animal: 550, produccion_de_leche: 15.5, Sigrasa: 3.8, tabla_nrc_lactancia_id: 14, registro_animal_id: 2 },
-    { id_racion_lactancia: 15, peso_animal: 390, produccion_de_leche: 10.8, Sigrasa: 2.9, tabla_nrc_lactancia_id: 15, registro_animal_id: 7 },
-  ];
-
-  // Estado para el formulario
-  const [formData, setFormData] = useState({
-    peso_animal: '',
-    produccion_de_leche: '',
-    grasa_en_leche: '',
-    gestante: false,
-  });
-
-  // Estado para los resultados calculados
-  const [results, setResults] = useState({
-    infoAnimal: { peso: 0, produccion_de_leche: 0, grasa_en_leche: 0, gestante: 'No' },
-    requerimientosEnergeticos: { energia_neta: 0, energia_digestible: 0, energia_metabolizable: 0, tnd: 0 },
-    requerimientosProteicos: { proteina_total: 0, proteina_digestible: 0, materia_seca: 0 },
-    requerimientosMinerales: { calcio: 0, fosforo: 0 },
-  });
-
-  // Función para calcular resultados
-  const calculateRations = () => {
-    const nrcData = nrcLactanciaData.map(item => ({
-      EN_mcal: item.EN_mcal,
-      EM_mcal: item.EM_mcal,
-      ED_mcal: item.ED_mcal,
-      proteina: item.proteina,
-      calcio: item.calcio,
-      fosforo: item.fosforo,
-      MS_kg: item.MS_kg,
-    })).filter(item => item.EN_mcal > 0);
-
-    const reqData = racionLactanciaReqData.map(item => ({
-      peso_animal: item.peso_animal,
-      produccion_de_leche: item.produccion_de_leche,
-      Sigrasa: item.Sigrasa,
-    })).filter(item => item.peso_animal > 0 && item.produccion_de_leche > 0 && item.Sigrasa > 0);
-
-    const promedioEN = nrcData.reduce((sum, val) => sum + val.EN_mcal, 0) / nrcData.length || 0;
-    const promedioED = nrcData.reduce((sum, val) => sum + val.ED_mcal, 0) / nrcData.length || 0;
-    const promedioEM = nrcData.reduce((sum, val) => sum + val.EM_mcal, 0) / nrcData.length || 0;
-    const promedioProteina = nrcData.reduce((sum, val) => sum + val.proteina, 0) / nrcData.length || 0;
-    const promedioCalcio = nrcData.reduce((sum, val) => sum + val.calcio, 0) / nrcData.length || 0;
-    const promedioFosforo = nrcData.reduce((sum, val) => sum + val.fosforo, 0) / nrcData.length || 0;
-    const promedioMS = nrcData.reduce((sum, val) => sum + val.MS_kg, 0) / nrcData.length || 0;
-    const promedioPeso = reqData.reduce((sum, val) => sum + val.peso_animal, 0) / reqData.length || 0;
-    const promedioProduccion = reqData.reduce((sum, val) => sum + val.produccion_de_leche, 0) / reqData.length || 0;
-    const promedioGrasa = reqData.reduce((sum, val) => sum + val.Sigrasa, 0) / reqData.length || 0;
-
-    const tnd = (promedioED * 0.82) / 4.4; // Estimación simple basada en conversión
-
-    setResults({
-      infoAnimal: {
-        peso: promedioPeso.toFixed(2),
-        produccion_de_leche: promedioProduccion.toFixed(2),
-        grasa_en_leche: (promedioGrasa * 100 / promedioProduccion).toFixed(2),
-        gestante: 'No',
-      },
-      requerimientosEnergeticos: {
-        energia_neta: (promedioEN * 10).toFixed(2), // Ajuste a Mcal/día
-        energia_digestible: (promedioED * 10).toFixed(2),
-        energia_metabolizable: (promedioEM * 10).toFixed(2),
-        tnd: tnd.toFixed(2),
-      },
-      requerimientosProteicos: {
-        proteina_total: (promedioProteina * promedioMS / 100).toFixed(3),
-        proteina_digestible: (promedioProteina * promedioMS / 100 * 0.6).toFixed(3), // 60% digestibilidad estimada
-        materia_seca: promedioMS.toFixed(2),
-      },
-      requerimientosMinerales: {
-        calcio: (promedioCalcio * promedioMS / 100).toFixed(3),
-        fosforo: (promedioFosforo * promedioMS / 100).toFixed(3),
-      },
-    });
-  };
-
-  // Efecto para calcular al montar el componente
-  useEffect(() => {
-    calculateRations();
-  }, []);
-
-  // Manejar cambios en el formulario
+  /* -------- Handlers -------- */
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData({ ...formData, [name]: type === 'checkbox' ? checked : value });
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Manejar envío del formulario
-  const handleSubmit = (e) => {
+  // Manejo de selección de ingredientes (definido en el scope del componente)
+  const toggleIngrediente = (id) => {
+    setIngredientesSel((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+  const seleccionarTodos = () => {
+    setIngredientesSel(ingredientesDisp.map((i) => i.id_ingrediente));
+  };
+  const limpiarSeleccion = () => {
+    setIngredientesSel([]);
+  };
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const newReqData = [...racionLactanciaReqData, { ...formData, id_racion_lactancia: 0, tabla_nrc_lactancia_id: 1, registro_animal_id: racionLactanciaReqData.length + 1 }];
-    const nrcMatch = nrcLactanciaData.find(item => Math.abs(item.peso - formData.peso_animal) < 50);
-
-    const nrcData = nrcLactanciaData.map(item => ({
-      EN_mcal: item.EN_mcal,
-      EM_mcal: item.EM_mcal,
-      ED_mcal: item.ED_mcal,
-      proteina: item.proteina,
-      calcio: item.calcio,
-      fosforo: item.fosforo,
-      MS_kg: item.MS_kg,
-    })).filter(item => item.EN_mcal > 0);
-
-    const reqData = newReqData.map(item => ({
-      peso_animal: item.peso_animal,
-      produccion_de_leche: item.produccion_de_leche,
-      Sigrasa: item.Sigrasa || 0,
-    })).filter(item => item.peso_animal > 0 && item.produccion_de_leche > 0);
-
-    const promedioEN = nrcData.reduce((sum, val) => sum + val.EN_mcal, 0) / nrcData.length || 0;
-    const promedioED = nrcData.reduce((sum, val) => sum + val.ED_mcal, 0) / nrcData.length || 0;
-    const promedioEM = nrcData.reduce((sum, val) => sum + val.EM_mcal, 0) / nrcData.length || 0;
-    const promedioProteina = nrcData.reduce((sum, val) => sum + val.proteina, 0) / nrcData.length || 0;
-    const promedioCalcio = nrcData.reduce((sum, val) => sum + val.calcio, 0) / nrcData.length || 0;
-    const promedioFosforo = nrcData.reduce((sum, val) => sum + val.fosforo, 0) / nrcData.length || 0;
-    const promedioMS = nrcData.reduce((sum, val) => sum + val.MS_kg, 0) / nrcData.length || 0;
-    const promedioPeso = reqData.reduce((sum, val) => sum + val.peso_animal, 0) / reqData.length || 0;
-    const promedioProduccion = reqData.reduce((sum, val) => sum + val.produccion_de_leche, 0) / reqData.length || 0;
-    const promedioGrasa = reqData.reduce((sum, val) => sum + (val.Sigrasa || 0), 0) / reqData.length || 0;
-
-    const tnd = (promedioED * 0.82) / 4.4; // Estimación simple basada en conversión
-
-    setResults({
-      infoAnimal: {
-        peso: formData.peso_animal || promedioPeso.toFixed(2),
-        produccion_de_leche: formData.produccion_de_leche || promedioProduccion.toFixed(2),
-        grasa_en_leche: formData.grasa_en_leche || (promedioGrasa * 100 / promedioProduccion).toFixed(2),
-        gestante: formData.gestante ? 'Sí' : 'No',
-      },
-      requerimientosEnergeticos: {
-        energia_neta: (promedioEN * 10).toFixed(2), // Ajuste a Mcal/día
-        energia_digestible: (promedioED * 10).toFixed(2),
-        energia_metabolizable: (promedioEM * 10).toFixed(2),
-        tnd: tnd.toFixed(2),
-      },
-      requerimientosProteicos: {
-        proteina_total: (promedioProteina * promedioMS / 100).toFixed(3),
-        proteina_digestible: (promedioProteina * promedioMS / 100 * 0.6).toFixed(3), // 60% digestibilidad estimada
-        materia_seca: promedioMS.toFixed(2),
-      },
-      requerimientosMinerales: {
-        calcio: (promedioCalcio * promedioMS / 100).toFixed(3),
-        fosforo: (promedioFosforo * promedioMS / 100).toFixed(3),
-      },
-    });
-    setFormData({ peso_animal: '', produccion_de_leche: '', grasa_en_leche: '', gestante: false }); // Resetear formulario
+    setCalculating(true);
+    setApiError(null);
+    try {
+      const response = await fetch(apiUrl('/api/raciones/api/calcular'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify({
+          etapa: 'lactancia',
+          id_animal: formData.id_animal || undefined,
+          id_requerimiento: formData.id_requerimiento || undefined,
+          fecha_calculo: formData.fecha_calculo || undefined,
+          ms_total: formData.ms_total || undefined,
+          calculado_por: formData.calculado_por || undefined,
+          observaciones: formData.observaciones || undefined,
+          peso: formData.peso || undefined,
+          produccion_leche: formData.produccion_leche,
+          grasa_pct: formData.grasa_pct,
+          guardar,
+          optimizar: true,
+          ingredientes_ids: ingredientesSel,
+          ingredientes: [],
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Error del servidor');
+      setResults(data);
+      // Mensaje simple de guardado
+      if (data.saved) {
+        setSaveMsg(`Cálculo guardado. ID ración: ${data.id_racion}`);
+        setTimeout(() => setSaveMsg(''), 4000);
+      }
+    } catch (err) {
+      setApiError(err.message);
+    } finally {
+      setCalculating(false);
+    }
   };
 
-  return (
-    <div className="raciones-lactancia-container">
-      <h1 className="raciones-title">Gestión de Raciones Lactancia</h1>
+  // Exportar PDF (organizado)
+  const handleExportPDF = async () => {
+    const r = results || {};
+    const animal = animales.find(a => String(a.id) === String(formData.id_animal));
+    const reqSel = requerimientos.find(rr => String(rr.id_requerimiento || rr.id) === String(formData.id_requerimiento));
+    const userSel = usuarios.find(u => String(u.id || u.id_usuario) === String(formData.calculado_por));
+    const animalLabel = animal ? fmtAnimalLabel(animal) : '-';
+    const reqLabel = reqSel ? fmtReqLabel(reqSel) : '-';
+    const userLabel = userSel ? fmtUserLabel(userSel) : '-';
+    const fecha = formData.fecha_calculo || new Date().toISOString().slice(0,10);
 
-      {/* Formulario */}
-      <div className="raciones-form" data-aos="fade-up">
-        <h2>Datos del Animal</h2>
-        <p>Ingrese la información de la vaca para calcular sus requerimientos nutricionales según las tablas NRC.</p>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Peso del Animal (kg)</label>
-            <input
-              type="number"
-              name="peso_animal"
-              value={formData.peso_animal}
-              onChange={handleChange}
-              placeholder="Ingrese peso"
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label>Producción de Leche (kg/día)</label>
-            <input
-              type="number"
-              name="produccion_de_leche"
-              value={formData.produccion_de_leche}
-              onChange={handleChange}
-              placeholder="Ingrese producción"
-              step="0.1"
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label>Porcentaje de Grasa en Leche (%)</label>
-            <input
-              type="number"
-              name="grasa_en_leche"
-              value={formData.grasa_en_leche}
-              onChange={handleChange}
-              placeholder="Ingrese porcentaje"
-              step="0.1"
-              required
-            />
-          </div>
-          <div className="form-group">
-            <label>Gestante (últimos 2 meses)</label>
-            <input
-              type="checkbox"
-              name="gestante"
-              checked={formData.gestante}
-              onChange={handleChange}
-            />
-          </div>
-          <button type="submit" className="submit-btn">Calcular Requerimientos</button>
-        </form>
-      </div>
+    const styles = `
+      * { box-sizing: border-box; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Liberation Sans', sans-serif; color: #0b2533; margin: 24px; }
+      h1 { margin: 0 0 14px; font-size: 22px; }
+      h2 { margin: 18px 0 10px; font-size: 16px; }
+      .meta, .tbl { width: 100%; border-collapse: collapse; margin: 8px 0 12px; }
+      .meta th, .meta td, .tbl th, .tbl td { border: 1px solid #e5e7eb; padding: 6px 8px; font-size: 12px; text-align: left; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .box { border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; }
+      .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .right { text-align: right; }
+      .muted { color: #64748b; }
+      .badge { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 11px; background:#eef2ff; color:#3730a3; }
+      .ok { background:#dcfce7; color:#166534; }
+      .bad { background:#fee2e2; color:#991b1b; }
+      @media print { .no-print { display: none; } }
+    `;
 
-      {/* Resultados */}
-      <div className="raciones-results" data-aos="fade-up">
-        <h2>Resultados</h2>
-        <div className="result-card">
-          <BsCup className="result-icon" />
-          <div>
-            <h3>Información del Animal</h3>
-            <p>Peso: {results.infoAnimal.peso} kg</p>
-            <p>Producción de leche: {results.infoAnimal.produccion_de_leche} kg/día</p>
-            <p>Grasa en leche: {results.infoAnimal.grasa_en_leche}%</p>
-            <p>Gestante: {results.infoAnimal.gestante}</p>
-            <h3>Requerimientos Energéticos</h3>
-            <p>Energía Neta (Mcal): {results.requerimientosEnergeticos.energia_neta}</p>
-            <p>Energía Digestible (Mcal): {results.requerimientosEnergeticos.energia_digestible}</p>
-            <p>Energía Metabolizable (Mcal): {results.requerimientosEnergeticos.energia_metabolizable}</p>
-            <p>TND (kg): {results.requerimientosEnergeticos.tnd}</p>
-            <h3>Requerimientos Proteicos</h3>
-            <p>Proteína Total (kg): {results.requerimientosProteicos.proteina_total}</p>
-            <p>Proteína Digestible (kg): {results.requerimientosProteicos.proteina_digestible}</p>
-            <p>Materia Seca (kg): {results.requerimientosProteicos.materia_seca}</p>
-            <h3>Minerales</h3>
-            <p>Calcio (kg): {results.requerimientosMinerales.calcio}</p>
-            <p>Fósforo (kg): {results.requerimientosMinerales.fosforo}</p>
+    const animalInfo = `
+      <div class="box">
+        <h2>Animal</h2>
+        <table class="tbl">
+          <tr><th>Identificación</th><td>${animalLabel}</td></tr>
+          <tr><th>Peso</th><td>${fmt(r.infoAnimal?.peso, 1)} kg</td></tr>
+          <tr><th>Leche</th><td>${fmt(r.infoAnimal?.produccion_de_leche, 2)} kg/d</td></tr>
+          <tr><th>Grasa en leche</th><td>${fmt(r.infoAnimal?.grasa_en_leche, 1)} %</td></tr>
+        </table>
+      </div>`;
+
+    const reqsEner = r.requerimientosEnergeticos || {};
+    const reqsProt = r.requerimientosProteicos || {};
+    const tot = (r.racion_optima && r.racion_optima.totales) || {};
+    const cump = (r.racion_optima && r.racion_optima.cumplimiento) || {};
+
+    const compRows = [
+      { grupo: 'Energía', label: 'EM (Mcal)', req: reqsEner.energia_metabolizable, ap: tot.EM, d: 2 },
+      { grupo: 'Energía', label: 'EN (Mcal)', req: reqsEner.energia_neta, ap: tot.EN, d: 2 },
+      { grupo: 'Energía', label: 'ED (Mcal)', req: reqsEner.energia_digestible, ap: tot.ED, d: 2 },
+      { grupo: 'Energía', label: 'TND (kg)', req: reqsEner.tnd, ap: tot.TND, d: 3 },
+      { grupo: 'Proteínas', label: 'PT (g)', req: reqsProt.proteina_total, ap: (tot.PT ?? tot.PC), d: 0 },
+      { grupo: 'Proteínas', label: 'PD (g)', req: reqsProt.proteina_digestible, ap: tot.PD, d: 0 },
+      { grupo: 'Proteínas', label: 'MS (kg)', req: reqsProt.materia_seca, ap: tot.MS, d: 3 },
+    ];
+    const compTable = `
+      <div class="box">
+        <h2>Requerimientos vs Aportes</h2>
+        <table class="tbl">
+          <thead><tr><th>Nutriente</th><th class="right">Requerido</th><th class="right">Aporte</th></tr></thead>
+          <tbody>
+            ${compRows.map(row => `
+              <tr>
+                <td>${row.grupo} — ${row.label}</td>
+                <td class="right">${fmt(row.req, row.d)}</td>
+                <td class="right">${fmt(row.ap, row.d)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    const sol = (r.racion_optima && r.racion_optima.solucion) || [];
+    const solTable = `
+      <div class="box">
+        <h2>Ración óptima (kg MS por ingrediente)</h2>
+        <table class="tbl">
+          <thead>
+            <tr><th>Ingrediente</th><th class="right">Kg MS</th><th class="right">EM (Mcal)</th><th class="right">PC (g)</th></tr>
+          </thead>
+          <tbody>
+            ${sol.length ? sol.map(it => `
+              <tr>
+                <td>${it.nombre}</td>
+                <td class="right">${fmt(it.kg_ms)}</td>
+                <td class="right">${fmt(it.em_aporte)}</td>
+                <td class="right">${fmt(it.pc_aporte_g)}</td>
+              </tr>
+            `).join('') : `<tr><td colspan="4" class="muted">Sin solución</td></tr>`}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th>Total</th>
+              <th class="right">${fmt(tot.MS)}</th>
+              <th class="right">${fmt(tot.EM)}</th>
+              <th class="right">${fmt(tot.PC)}</th>
+            </tr>
+          </tfoot>
+        </table>
+        <div class="kv">
+          <div><span class="muted">Totales extendidos</span></div>
+          <div class="right">EN ${fmt(tot.EN)} · ED ${fmt(tot.ED)} · TND ${fmt(tot.TND)}</div>
+        </div>
+        <div class="kv">
+          <div><span class="muted">Cumplimiento</span></div>
+          <div class="right">
+            <span class="badge ${cump.EM ? 'ok' : 'bad'}">EM</span>
+            <span class="badge ${cump.PC ? 'ok' : 'bad'}">PC</span>
+            <span class="badge ${cump.MS ? 'ok' : 'bad'}">MS</span>
           </div>
         </div>
+      </div>`;
+
+    const header = `
+      <h1>Ración Lactancia</h1>
+      <table class="meta">
+        <tr><th>Animal</th><td>${animalLabel}</td><th>Requerimiento</th><td>${reqLabel}</td></tr>
+        <tr><th>Calculado por</th><td>${userLabel}</td><th>Fecha</th><td>${fecha}</td></tr>
+      </table>
+    `;
+
+    const layout = `
+      ${header}
+      <div class="grid">
+        ${animalInfo}
+        ${compTable}
       </div>
+      ${solTable}
+    `;
+
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>Ración Lactancia</title><style>${styles}</style></head><body>`);
+    win.document.write(layout);
+    win.document.write('</body></html>');
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); win.close(); }, 300);
+  };
+
+  /* -------- JSX -------- */
+  return (
+    <div className="raciones-lactancia-container">
+      <h1 className="raciones-title">Gestión de Raciones – Lactancia</h1>
+
+      {/* Paso 1 & 2 */}
+      <section className="raciones-form" data-aos="fade-up">
+        <h2>Registro de Ración</h2>
+        <form onSubmit={handleSubmit}>
+          {/* Selección */}
+          <fieldset className="raciones-step" data-aos="fade-right">
+            <legend>1. Selección de datos</legend>
+            <div className="grid-responsive">
+              <div className="form-group">
+                <label>Animal</label>
+                <select name="id_animal" value={formData.id_animal} onChange={handleChange} required disabled={loading || calculating}>
+                  <option value="" disabled>
+                    {loading ? 'Cargando…' : animales.length === 0 ? 'Sin registros' : '-- Seleccione --'}
+                  </option>
+                  {animales
+                    .filter((a) => {
+                      // Mostrar solo animales de Lactancia si el dato existe
+                      if (a && a.id_etapa != null) return Number(a.id_etapa) === 1;
+                      if (a && a.etapa) return String(a.etapa).toLowerCase() === 'lactancia';
+                      if (a && a.categoria) return String(a.categoria).toLowerCase().includes('lactancia');
+                      return true; // si no hay campo de etapa, no filtramos
+                    })
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>{fmtAnimalLabel(a)}</option>
+                    ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Requerimiento</label>
+                <select name="id_requerimiento" value={formData.id_requerimiento} onChange={handleChange} required disabled={loading || calculating}>
+                  <option value="" disabled>
+                    {loading ? 'Cargando…' : requerimientos.length === 0 ? 'Sin registros' : '-- Seleccione --'}
+                  </option>
+                  {requerimientos
+                    .filter((r) => Number(r.id_etapa) === 1)
+                    .map((r) => (
+                    <option key={r.id_requerimiento} value={r.id_requerimiento}>{fmtReqLabel(r)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Calculado por</label>
+                <select name="calculado_por" value={formData.calculado_por} onChange={handleChange} required disabled={loading || calculating}>
+                  <option value="" disabled>
+                    {loading ? 'Cargando…' : usuarios.length === 0 ? 'Sin registros' : '-- Seleccione --'}
+                  </option>
+                  {usuarios.map((u) => (
+                    <option key={u.id_usuario ?? u.id} value={(u.id_usuario ?? u.id)}>{fmtUserLabel(u)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </fieldset>
+
+          {/* Ingredientes disponibles */}
+          <fieldset className="raciones-step" data-aos="fade-right">
+            <legend>Ingredientes disponibles</legend>
+            <div className="form-actions" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="secondary-btn" onClick={seleccionarTodos} disabled={ingredientesDisp.length === 0}>Seleccionar todos</button>
+              <button type="button" className="secondary-btn" onClick={limpiarSeleccion} disabled={ingredientesSel.length === 0}>Limpiar selección</button>
+              <input
+                type="text"
+                placeholder="Buscar ingrediente..."
+                value={ingredientSearch}
+                onChange={(e) => setIngredientSearch(e.target.value)}
+                style={{ flex: '1 1 240px', minWidth: 200, padding: '0.45rem 0.6rem', border: '1px solid #e5e7eb', borderRadius: 6 }}
+              />
+            </div>
+            {ingredientesDisp.length === 0 ? (
+              <p className="muted">No hay ingredientes en el catálogo.</p>
+            ) : (
+              <div className="ingredientes-grid">
+                {(ingredientesDisp.filter((ing) => {
+                  const q = ingredientSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  return (
+                    String(ing.id_ingrediente).includes(q) ||
+                    (ing.nombre || '').toLowerCase().includes(q)
+                  );
+                })).map((ing) => (
+                  <label key={ing.id_ingrediente} className={`check-item ${ingredientesSel.includes(ing.id_ingrediente) ? 'checked' : ''}`}>
+                    <input type="checkbox" checked={ingredientesSel.includes(ing.id_ingrediente)} onChange={() => toggleIngrediente(ing.id_ingrediente)} />
+                    <span>
+                      {ing.nombre} <span className="muted">(ID {ing.id_ingrediente})</span>
+                      {ing.costo_kg != null && (
+                        <span className="pill" style={{ marginLeft: 8 }}>Costo ${Number(ing.costo_kg).toFixed(2)}/kg</span>
+                      )}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <p className="muted">La optimización usará únicamente los ingredientes seleccionados. Seleccionados: {ingredientesSel.length}</p>
+          </fieldset>
+
+          {/* Parámetros */}
+          <fieldset className="raciones-step" data-aos="fade-right">
+            <legend>3. Parámetros de cálculo</legend>
+            <div className="grid-responsive">
+              <div className="form-group">
+                <label>Fecha</label>
+                <input type="date" name="fecha_calculo" value={formData.fecha_calculo} onChange={handleChange} required />
+              </div>
+              <div className="form-group">
+                <label>Materia Seca (kg)</label>
+                <input type="number" step="0.01" name="ms_total" value={formData.ms_total} onChange={handleChange} required />
+              </div>
+              <div className="form-group">
+                <label>Producción de leche (kg/día)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  name="produccion_leche"
+                  value={formData.produccion_leche}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>% Grasa en leche</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  name="grasa_pct"
+                  value={formData.grasa_pct}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Observaciones</label>
+              <textarea name="observaciones" rows="3" value={formData.observaciones} onChange={handleChange} />
+            </div>
+          </fieldset>
+
+          <div className="actions-row">
+            <label className="toggle">
+              <input type="checkbox" checked={guardar} onChange={(e) => setGuardar(e.target.checked)} /> Guardar cálculo
+            </label>
+            <button className="submit-btn" type="submit" disabled={calculating || ingredientesSel.length === 0}>
+              {calculating ? 'Calculando…' : 'Calcular y (opcional) Guardar'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* Mensajes */}
+      {apiError && <p className="warn">Error: {apiError}</p>}
+      {saveMsg && <p className="success">{saveMsg}</p>}
+
+      {/* Resultados */}
+      {!calculating && Object.keys(results.infoAnimal).length > 0 && (
+        <section className="raciones-results" data-aos="fade-up">
+          <h2>Resultados</h2>
+          <div ref={resultsRef}>
+          <div className="card-grid rich">
+            <ResultCard title="Animal" icon={<GiCow className="result-icon" />}>
+              <p><span className="badge">Peso</span> {Number(results.infoAnimal.peso || 0).toFixed(1)} kg</p>
+              <p><span className="badge">Leche</span> {Number(results.infoAnimal.produccion_de_leche || 0).toFixed(2)} kg/d</p>
+              <p><span className="badge">Grasa</span> {Number(results.infoAnimal.grasa_en_leche || 0).toFixed(1)} %</p>
+            </ResultCard>
+            <ResultCard title="Energía" icon={<MdBolt className="result-icon" />}>
+              <p>EN: <strong>{results.requerimientosEnergeticos.energia_neta ?? '-'}</strong></p>
+              <p>ED: <strong>{results.requerimientosEnergeticos.energia_digestible ?? '-'}</strong></p>
+              <p>EM: <strong className="highlight">{results.requerimientosEnergeticos.energia_metabolizable ?? '-'}</strong></p>
+              <p>TND: <strong>{results.requerimientosEnergeticos.tnd ?? '-'}</strong></p>
+            </ResultCard>
+            <ResultCard title="Proteínas" icon={<GiMeal className="result-icon" />}>
+              <div className="kv">
+                <span>PT:</span>
+                <span>{results.requerimientosProteicos.proteina_total ?? '-'}</span>
+              </div>
+              <div className="kv">
+                <span>PD:</span>
+                <span>{results.requerimientosProteicos.proteina_digestible ?? '-'}</span>
+              </div>
+              <div className="kv">
+                <span>MS:</span>
+                <span>{results.requerimientosProteicos.materia_seca ?? '-'}</span>
+              </div>
+            </ResultCard>
+          </div>
+          {/* Comparativo Requerimientos vs Aportes de la mezcla */}
+          {results?.infoAnimal && (results.requerimientosEnergeticos || results.requerimientosProteicos) && (
+            <ResultCard title="Requerimientos vs Aportes (mezcla óptima)">
+              <div className="comp-controls">
+                <label className="toggle"><input type="checkbox" checked={compactView} onChange={(e)=>setCompactView(e.target.checked)} />Vista compacta</label>
+              </div>
+              {(() => {
+                const r = results;
+                 
+                const meta = {
+                  EM: { tip: 'Energía metabolizable diaria requerida o aportada por la mezcla.' },
+                  EN: { tip: 'Energía neta estimada a partir de EM.' },
+                  ED: { tip: 'Energía digestible estimada a partir de EM.' },
+                  TND:{ tip: 'Total de nutrientes digestibles (kg) estimado.' },
+                  PT: { tip: 'Proteína total (g/día).' },
+                  PD: { tip: 'Proteína digestible estimada (g/día).' },
+                  MS: { tip: 'Materia seca total de la ración (kg/día).' },
+                };
+                const rows = [
+                  { block:'Energía', key: 'EM', label: 'EM (Mcal)', req: r.requerimientosEnergeticos?.energia_metabolizable, ap: r.racion_optima?.totales?.EM, d: 2 },
+                  { block:'Energía', key: 'EN', label: 'EN (Mcal)', req: r.requerimientosEnergeticos?.energia_neta, ap: r.racion_optima?.totales?.EN, d: 2 },
+                  { block:'Energía', key: 'ED', label: 'ED (Mcal)', req: r.requerimientosEnergeticos?.energia_digestible, ap: r.racion_optima?.totales?.ED, d: 2 },
+                  { block:'Energía', key: 'TND', label: 'TND (kg)', req: r.requerimientosEnergeticos?.tnd, ap: r.racion_optima?.totales?.TND, d: 3 },
+                  { block:'Proteínas', key: 'PT', label: 'PT (g)', req: r.requerimientosProteicos?.proteina_total, ap: (r.racion_optima?.totales?.PT ?? r.racion_optima?.totales?.PC), d: 0 },
+                  { block:'Proteínas', key: 'PD', label: 'PD (g)', req: r.requerimientosProteicos?.proteina_digestible, ap: r.racion_optima?.totales?.PD, d: 0 },
+                  { block:'Proteínas', key: 'MS', label: 'MS (kg)', req: r.requerimientosProteicos?.materia_seca, ap: r.racion_optima?.totales?.MS, d: 3 },
+                ];
+                const eps = 1e-3;
+                const blocks = ['Energía','Proteínas'];
+                const blockStatus = (b) => {
+                  const set = rows.filter(x=>x.block===b);
+                  const valids = set.filter(x=>x.req!=null && !isNaN(x.req) && x.ap!=null && !isNaN(x.ap));
+                  if (!valids.length) return null;
+                  const allOk = valids.every(x=> Number(x.ap)+eps >= Number(x.req));
+                  return allOk;
+                };
+                return (
+                  <div className="comp-table">
+                    <div className="comp-head">
+                      <div>Nutriente</div>
+                      <div>Requerido</div>
+                      <div>Aporte</div>
+                      <div>Estado</div>
+                    </div>
+                    <div className="comp-body">
+                      {blocks.map((b)=> (
+                        <React.Fragment key={`block-${b}`}>
+                          <div className="comp-row comp-subhead">
+                            <div className="comp-cell comp-nutriente">
+                              {b}
+                              {blockStatus(b) === null ? (
+                                <span className="badge" style={{marginLeft:8}}>s/datos</span>
+                              ) : (
+                                <span className={`badge ${blockStatus(b) ? 'badge-ok' : 'badge-bad'}`} style={{marginLeft:8}}>
+                                  {blockStatus(b) ? 'Cumple global' : 'No cumple global'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="comp-cell"></div>
+                            <div className="comp-cell"></div>
+                            <div className="comp-cell"></div>
+                          </div>
+                          {rows.filter(x=>x.block===b).map((row) => {
+                            const hasReq = row.req !== null && row.req !== undefined && !isNaN(row.req);
+                            const hasAp = row.ap !== null && row.ap !== undefined && !isNaN(row.ap);
+                            const ok = hasReq && hasAp ? (Number(row.ap) + eps >= Number(row.req)) : false;
+                            const diff = (hasReq && hasAp) ? (Number(row.ap) - Number(row.req)) : null;
+                            const pct = (hasReq && hasAp && Number(row.req)>0) ? Math.max(0, Math.min(100, (Number(row.ap)/Number(row.req))*100)) : null;
+                            return (
+                              <div className="comp-row" key={row.key}>
+                                <div className="comp-cell comp-nutriente" title={meta[row.key]?.tip}>{row.label}</div>
+                                <div className="comp-cell comp-req">{fmt(row.req, row.d)}</div>
+                                <div className="comp-cell comp-ap">
+                                  {fmt(row.ap, row.d)}
+                                  {!compactView && pct !== null && (
+                                    <div className="progress"><div className={`progress-bar ${ok?'':'bad'}`} style={{width: `${pct}%`}} /></div>
+                                  )}
+                                </div>
+                                <div className="comp-cell comp-status">
+                                  {hasReq && hasAp ? (
+                                    <span className={`badge ${ok ? 'badge-ok' : 'badge-bad'}`}>
+                                      {ok ? 'Cumple' : 'Bajo'}{diff !== null ? ` (${diff >= 0 ? '+' : ''}${fmt(diff, row.d)})` : ''}
+                                    </span>
+                                  ) : (
+                                    <span className="badge">-</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </ResultCard>
+          )}
+          {results?.racion_optima && (
+            <ResultCard title={`Ración óptima ${results.racion_optima?.objetivo === 'costo' ? '(min costo)' : '(min MS)'} (kg MS por ingrediente)`}>
+              {/* Estado global */}
+              {results.racion_optima?.status && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span className={`pill ${results.racion_optima.status === 'Optimal' ? 'ok' : 'bad'}`}>
+                    {results.racion_optima.status}
+                  </span>
+                  {results.racion_optima?.objetivo && (
+                    <span className="pill" title="Objetivo de optimización">
+                      {results.racion_optima.objetivo === 'costo' ? 'Min costo' : 'Min MS'}
+                    </span>
+                  )}
+                </div>
+              )}
+              {results.racion_optima?.message && (
+                <p className="error" style={{ marginTop: 8 }}>{results.racion_optima.message}</p>
+              )}
+
+              {/* Ingredientes considerados como chips */}
+              <div style={{ marginTop: 6 }}>
+                <div className="muted" style={{ marginBottom: 6 }}>Ingredientes considerados</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(results.racion_optima.ingredientes_considerados || []).length === 0 ? (
+                    <span className="muted">-</span>
+                  ) : (
+                    (results.racion_optima.ingredientes_considerados || []).map((i) => (
+                      <span key={i.id_ingrediente} className="pill" title={`ID ${i.id_ingrediente}`}>
+                        ID {i.id_ingrediente}
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Tabla compacta de solución */}
+              <div style={{ marginTop: 12, overflowX: 'auto' }}>
+                <table className="simple-table">
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left' }}>Ingrediente</th>
+                      <th>Kg MS</th>
+                      <th>EM (Mcal)</th>
+                      <th>PC (g)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(results.racion_optima.solucion || []).map((it) => (
+                      <tr key={it.id_ingrediente}>
+                        <td style={{ textAlign: 'left' }}>{it.nombre}</td>
+                        <td>{fmt(it.kg_ms)}</td>
+                        <td>{fmt(it.em_aporte)}</td>
+                        <td>{fmt(it.pc_aporte_g)}</td>
+                      </tr>
+                    ))}
+                    {(!results.racion_optima.solucion || results.racion_optima.solucion.length === 0) && (
+                      <tr>
+                        <td colSpan={4} className="muted">Sin solución</td>
+                      </tr>
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <th style={{ textAlign: 'left' }}>Total</th>
+                      <th>{fmt(results.racion_optima.totales?.MS)}</th>
+                      <th>{fmt(results.racion_optima.totales?.EM)}</th>
+                      <th>{fmt(results.racion_optima.totales?.PC)}</th>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Resumen ampliado de totales y cumplimiento */}
+              <div className="kv-table" style={{ marginTop: 8 }}>
+                <div className="kv">
+                  <span className="muted">Totales extendidos</span>
+                  <span>
+                    EN {fmt(results.racion_optima.totales?.EN)} Mcal · ED {fmt(results.racion_optima.totales?.ED)} Mcal · TND {fmt(results.racion_optima.totales?.TND)} kg
+                  </span>
+                </div>
+                <div className="kv">
+                  <span className="muted">Cumplimiento</span>
+                  <span>
+                    <span className={`badge ${results.racion_optima.cumplimiento?.EM ? 'badge-ok' : 'badge-bad'}`} style={{ marginRight: 6 }}>EM</span>
+                    <span className={`badge ${results.racion_optima.cumplimiento?.PC ? 'badge-ok' : 'badge-bad'}`} style={{ marginRight: 6 }}>PC</span>
+                    <span className={`badge ${results.racion_optima.cumplimiento?.MS ? 'badge-ok' : 'badge-bad'}`}>MS</span>
+                    <span className={`pill ${results.racion_optima.cumplimiento?.EM && results.racion_optima.cumplimiento?.PC && results.racion_optima.cumplimiento?.MS ? 'ok' : 'bad'}`} style={{ marginLeft: 8 }}>
+                      {results.racion_optima.cumplimiento?.EM && results.racion_optima.cumplimiento?.PC && results.racion_optima.cumplimiento?.MS ? 'Cumple' : 'No cumple'}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </ResultCard>
+          )}
+          <details style={{ marginTop: '1rem' }}>
+            <summary onClick={() => setShowJson((s) => !s)}>JSON completo</summary>
+            {showJson && <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(results, null, 2)}</pre>}
+          </details>
+          </div>
+          {/* Controles finales */}
+          <div className="comp-controls" style={{ marginTop: '12px' }}>
+            <button type="button" className="secondary-btn btn-blue" onClick={handleExportPDF}>Exportar PDF</button>
+          </div>
+        </section>
+      )}
 
       {/* Navegación */}
-      <div className="raciones-nav" data-aos="fade-up">
-        <Link to="/alimentacion/racion" className="nav-link">Volver a Racion Animal</Link>
+      <div className="raciones-nav">
+        <Link to="/alimentacion/racion" className="nav-link">Volver a Ración Animal</Link>
         <Link to="/alimentacion/racion-ceba" className="nav-link">Raciones Ceba</Link>
       </div>
     </div>

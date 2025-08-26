@@ -90,6 +90,34 @@
     background-color: #003a5b;
 }
 
+.upload-hints {
+    margin-top: 0.75rem;
+}
+
+.hint-text {
+    color: #6c757d;
+    font-size: 0.95rem;
+}
+
+.error-text {
+    color: #dc3545;
+    font-size: 0.95rem;
+}
+
+.image-actions {
+    margin-top: 0.75rem;
+}
+
+.remove-image-btn {
+    border-color: #dc3545;
+    color: #dc3545;
+}
+
+.remove-image-btn:hover {
+    background-color: #dc3545;
+    color: #fff;
+}
+
 /* Sección de Información del Usuario */
 .profile-info-section {
     background-color: white;
@@ -214,6 +242,14 @@ select.profile-input {
         width: 35px;
         height: 35px;
         font-size: 1.2rem;
+    }
+
+    .upload-hints {
+        margin-top: 0.5rem;
+    }
+
+    .hint-text, .error-text {
+        font-size: 0.9rem;
     }
 
     .profile-info-item {

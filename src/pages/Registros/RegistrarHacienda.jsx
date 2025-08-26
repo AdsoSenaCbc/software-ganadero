@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axiosInstance, { API_ROUTES } from '../../api/axiosConfig';
 import { jsPDF } from 'jspdf';
@@ -33,6 +33,13 @@ const RegistrarHacienda = () => {
   const [errors, setErrors] = useState({});
   const [savedId, setSavedId] = useState(null);
 
+  /* ---------- listado y modal ---------- */
+  const [haciendas, setHaciendas] = useState([]);
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedHacienda, setSelectedHacienda] = useState(null);
+
   /* ---------- listas para selects ---------- */
   const [lists, setLists] = useState({
     departamentos: [],
@@ -41,6 +48,10 @@ const RegistrarHacienda = () => {
   });
   const [loading, setLoading] = useState(true);
   const [errorListas, setErrorListas] = useState(null);
+
+  // filtros
+  const [filterNombre, setFilterNombre] = useState('');
+  const [filterUsuario, setFilterUsuario] = useState('');
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -66,6 +77,56 @@ const RegistrarHacienda = () => {
     fetchAll();
   }, [token]);
 
+  // Cargar listado de haciendas
+  const loadHaciendas = async () => {
+    setListLoading(true);
+    setListError(null);
+    try {
+      const { data } = await axiosInstance.get(API_ROUTES.HACIENDAS, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const items = Array.isArray(data) ? data : (data?.items || []);
+      // Si el endpoint de listado no trae campos de detalle, los completamos con GET por id
+      const needsEnrich = items.some(
+        (h) => h.tel_contacto === undefined && h.ubicacion === undefined && h.descripcion === undefined
+      );
+      if (!needsEnrich) {
+        setHaciendas(items);
+      } else {
+        const headers = { Authorization: `Bearer ${token}` };
+        const enriched = await Promise.all(
+          items.map(async (h) => {
+            const id = h.id_hacienda || h.id;
+            if (!id) return h;
+            try {
+              const { data: full } = await axiosInstance.get(`${API_ROUTES.HACIENDAS_CRUD}${id}`, { headers });
+              return { ...h, ...full };
+            } catch (_) {
+              return h; // si falla, dejamos el item original
+            }
+          })
+        );
+        setHaciendas(enriched);
+      }
+    } catch (err) {
+      console.error('Error cargando haciendas:', err);
+      setListError(err.response?.data?.message || err.message);
+    } finally {
+      setListLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token) loadHaciendas();
+  }, [token]);
+
+  useEffect(() => {
+    if (!showModal) return;
+    const onKey = (e) => { if (e.key === 'Escape') setShowModal(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showModal]);
+
   /* ---------- handlers ---------- */
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -86,19 +147,36 @@ const RegistrarHacienda = () => {
     ];
     const newErr = {};
     required.forEach((f) => {
-      if (!formData[f]) newErr[f] = 'Requerido';
+      if (!formData[f] && formData[f] !== 0) newErr[f] = 'Requerido';
     });
     if (Object.keys(newErr).length) {
+      console.log('Validation errors:', newErr);
       setErrors(newErr);
       return;
     }
 
     try {
-      const res = await axiosInstance.post(API_ROUTES.HACIENDAS_CRUD, formData, {
+      const url = savedId
+        ? `${API_ROUTES.HACIENDAS_CRUD}${savedId}`
+        : API_ROUTES.HACIENDAS_CRUD;
+      const method = savedId ? 'put' : 'post';
+      // Ensure numeric fields are numbers, not strings
+      const payload = {
+        ...formData,
+        id_departamento: formData.id_departamento ? Number(formData.id_departamento) : null,
+        id_municipio: formData.id_municipio ? Number(formData.id_municipio) : null,
+        id_usuario: formData.id_usuario ? Number(formData.id_usuario) : null,
+      };
+      
+      console.log('Sending payload:', JSON.stringify(payload, null, 2));
+      
+      const res = await axiosInstance[method](url, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setSavedId(res.data.id_hacienda || res.data.id);
-      Swal.fire('Éxito', 'Hacienda registrada', 'success');
+      const newId = res.data.id_hacienda || res.data.id || savedId;
+      setSavedId(newId);
+      Swal.fire('Éxito', savedId ? 'Hacienda actualizada' : 'Hacienda registrada', 'success');
+      loadHaciendas();
     } catch (err) {
       console.error(err);
       Swal.fire('Error', err.response?.data?.message || 'No se pudo guardar', 'error');
@@ -157,6 +235,7 @@ const RegistrarHacienda = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         Swal.fire('Eliminado', 'Hacienda eliminada', 'success');
+        loadHaciendas();
       } catch (err) {
         console.error(err);
         Swal.fire('Error', err.response?.data?.message || 'No se pudo eliminar', 'error');
@@ -191,6 +270,63 @@ const RegistrarHacienda = () => {
       !formData.id_departamento || m.id_departamento === Number(formData.id_departamento)
   );
   const usuarios = lists.usuarios || [];
+  const usersById = useMemo(() => {
+    const map = new Map();
+    (usuarios || []).forEach((u) => {
+      const full = `${u.nombres || ''} ${u.apellidos || ''}`.trim();
+      map.set(u.id_usuario, full || String(u.id_usuario));
+    });
+    return map;
+  }, [usuarios]);
+
+  const depsById = useMemo(() => {
+    const map = new Map();
+    (lists.departamentos || []).forEach((d) => map.set(d.id_departamento, d.nombre_departamento));
+    return map;
+  }, [lists.departamentos]);
+
+  const munsById = useMemo(() => {
+    const map = new Map();
+    (lists.municipios || []).forEach((m) => map.set(m.id_municipio, m.nombre_municipio));
+    return map;
+  }, [lists.municipios]);
+
+  const userNames = useMemo(() => (usuarios || []).map(u => `${u.nombres || ''} ${u.apellidos || ''}`.trim()).filter(Boolean), [usuarios]);
+
+  const haciendasFiltradas = useMemo(() => {
+    const byNombre = (h) =>
+      !filterNombre || (h.nombre || '').toLowerCase().includes(filterNombre.toLowerCase());
+    const byUsuario = (h) => {
+      if (!filterUsuario) return true;
+      const uname = usersById.get(h.id_usuario) || '';
+      return uname.toLowerCase().includes(filterUsuario.toLowerCase());
+    };
+    return (haciendas || []).filter((h) => byNombre(h) && byUsuario(h));
+  }, [haciendas, filterNombre, filterUsuario, usersById]);
+
+  const resetFilters = () => { setFilterNombre(''); setFilterUsuario(''); };
+
+  const handleDeleteCard = async (id) => {
+    const { isConfirmed } = await Swal.fire({
+      title: '¿Eliminar hacienda?',
+      text: 'Esta acción no se puede deshacer.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+    });
+    if (!isConfirmed) return;
+    try {
+      await axiosInstance.delete(`${API_ROUTES.HACIENDAS_CRUD}${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      Swal.fire('Eliminado', 'Hacienda eliminada', 'success');
+      await loadHaciendas();
+    } catch (err) {
+      console.error(err);
+      Swal.fire('Error', err.response?.data?.message || 'No se pudo eliminar', 'error');
+    }
+  };
 
   return (
     <div className="hacienda-container">
@@ -358,6 +494,143 @@ const RegistrarHacienda = () => {
           </button>
         </div>
       </div>
+
+      {/* listado de haciendas */}
+      <div className="hacienda-list">
+        <h3>Información de Haciendas</h3>
+        {listLoading && <p>Cargando registros...</p>}
+        {listError && <p className="error-message">{listError}</p>}
+        {!listLoading && !listError && (
+          <>
+          <div className="filter-bar">
+            <div className="filter-controls">
+              <div className="filter-item">
+                <label>Buscar hacienda</label>
+                <input
+                  type="text"
+                  placeholder="Nombre de hacienda"
+                  value={filterNombre}
+                  onChange={(e) => setFilterNombre(e.target.value)}
+                />
+              </div>
+              <div className="filter-item">
+                <label>Usuario</label>
+                <input
+                  list="usuarios-suggest"
+                  placeholder="Nombre de usuario"
+                  value={filterUsuario}
+                  onChange={(e) => setFilterUsuario(e.target.value)}
+                />
+                <datalist id="usuarios-suggest">
+                  {userNames.map((n) => (<option key={n} value={n} />))}
+                </datalist>
+              </div>
+              <div className="filter-actions">
+                <button className="btn" onClick={resetFilters}>Reiniciar</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="card-grid">
+            {haciendas.length === 0 && (
+              <div className="empty">Sin registros</div>
+            )}
+            {haciendasFiltradas.map((h) => {
+              const id = h.id_hacienda || h.id;
+              return (
+                <div key={id} className="hacienda-card">
+                  <div className="card-header">
+                    <span className="chip">{id}</span>
+                    <h4 className="card-title">{h.nombre || 'Sin nombre'}</h4>
+                    <div className="card-subtitle">{usersById.get(h.id_usuario) || '-'}</div>
+                  </div>
+                  <div className="card-body">
+                    <div className="info-row">
+                      <FaPhone className="icon" />
+                      <span className="label">Teléfono</span>
+                      <span className="value">{h.tel_contacto || '-'}</span>
+                    </div>
+                    <div className="info-row">
+                      <FaMapMarkerAlt className="icon" />
+                      <span className="label">Ubicación</span>
+                      <span className="value">{h.ubicacion || '-'}</span>
+                    </div>
+                    <div className="info-row">
+                      <FaAddressCard className="icon" />
+                      <span className="label">Descripción</span>
+                      <span className="value">{h.descripcion || '-'}</span>
+                    </div>
+                  </div>
+                  <div className="card-actions">
+                    <button
+                      className="btn btn-info"
+                      onClick={() => { setSelectedHacienda(h); setShowModal(true); }}
+                    >Consultar</button>
+                    <button
+                      className="btn btn-warning"
+                      onClick={() => {
+                        setFormData({
+                          nombre: h.nombre || '',
+                          tel_contacto: h.tel_contacto || '',
+                          ubicacion: h.ubicacion || '',
+                          descripcion: h.descripcion || '',
+                          id_departamento: h.id_departamento?.toString() || '',
+                          id_municipio: h.id_municipio?.toString() || '',
+                          id_usuario: h.id_usuario?.toString() || '',
+                        });
+                        setErrors({});
+                        setSavedId(id);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                    >Actualizar</button>
+                    <button
+                      className="btn btn-danger"
+                      onClick={() => handleDeleteCard(id)}
+                    >Eliminar</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          </>
+        )}
+      </div>
+
+      {showModal && selectedHacienda && (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="hacienda-modal-title"
+          onClick={() => setShowModal(false)}
+        >
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" aria-label="Cerrar" onClick={() => setShowModal(false)}>✕</button>
+            <div className="modal-header">
+              <span className="chip">{selectedHacienda.id_hacienda || selectedHacienda.id}</span>
+              <h4 id="hacienda-modal-title">{selectedHacienda.nombre || 'Detalle de Hacienda'}</h4>
+              <span className="muted">{usersById.get(selectedHacienda.id_usuario) || '-'}</span>
+            </div>
+
+            <div className="modal-body">
+              <hr className="modal-divider" />
+              <ul className="detail-list">
+                <li className="detail-item"><span className="label">Departamento</span><span className="value">{depsById.get(selectedHacienda.id_departamento) || '-'}</span></li>
+                <li className="detail-item"><span className="label">Municipio</span><span className="value">{munsById.get(selectedHacienda.id_municipio) || '-'}</span></li>
+                <li className="detail-item"><span className="label">Teléfono</span><span className="value">{selectedHacienda.tel_contacto || '-'}</span></li>
+                <li className="detail-item"><span className="label">Usuario</span><span className="value">{usersById.get(selectedHacienda.id_usuario) || '-'}</span></li>
+                <li className="detail-item"><span className="label">Ubicación</span><span className="value">{selectedHacienda.ubicacion || '-'}</span></li>
+                <li className="detail-item"><span className="label">Hacienda</span><span className="value">{selectedHacienda.nombre || '-'}</span></li>
+                <li className="detail-item detail-item--full"><span className="label">Observaciones</span><span className="value">{selectedHacienda.descripcion || '-'}</span></li>
+              </ul>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setShowModal(false)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

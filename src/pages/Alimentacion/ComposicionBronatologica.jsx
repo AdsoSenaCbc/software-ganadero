@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2/dist/sweetalert2.js';
 import 'sweetalert2/dist/sweetalert2.min.css';
 import './ComposicionBronatologica.css';
+import { apiUrl, authHeader } from '../../api/api';
 
 const ComposicionBronatologica = () => {
   // Estado para el formulario de ingreso
@@ -15,27 +16,116 @@ const ComposicionBronatologica = () => {
     fosforo: '',
   });
 
-  // Datos iniciales de ingredientes (15 ejemplos hipotéticos)
-  const initialIngredientes = [
-    { ingrediente: 'Maíz', materia_seca: 88.0, proteina_cruda: 9.0, energia_metabolizable: 3.3, fibra_cruda: 2.0, calcio: 0.03, fosforo: 0.3 },
-    { ingrediente: 'Soja', materia_seca: 90.0, proteina_cruda: 44.0, energia_metabolizable: 3.2, fibra_cruda: 5.0, calcio: 0.25, fosforo: 0.6 },
-    { ingrediente: 'Trigo', materia_seca: 87.0, proteina_cruda: 12.0, energia_metabolizable: 3.1, fibra_cruda: 2.5, calcio: 0.05, fosforo: 0.4 },
-    { ingrediente: 'Alfalfa', materia_seca: 91.0, proteina_cruda: 18.0, energia_metabolizable: 2.4, fibra_cruda: 28.0, calcio: 1.4, fosforo: 0.3 },
-    { ingrediente: 'Cebada', materia_seca: 89.0, proteina_cruda: 11.0, energia_metabolizable: 3.0, fibra_cruda: 4.5, calcio: 0.06, fosforo: 0.35 },
-    { ingrediente: 'Sorgo', materia_seca: 86.0, proteina_cruda: 10.0, energia_metabolizable: 3.2, fibra_cruda: 2.8, calcio: 0.04, fosforo: 0.3 },
-    { ingrediente: 'Harina de pescado', materia_seca: 92.0, proteina_cruda: 65.0, energia_metabolizable: 3.5, fibra_cruda: 1.0, calcio: 4.0, fosforo: 2.5 },
-    { ingrediente: 'Salvado de trigo', materia_seca: 88.0, proteina_cruda: 15.0, energia_metabolizable: 2.6, fibra_cruda: 10.0, calcio: 0.1, fosforo: 1.0 },
-    { ingrediente: 'Harina de maíz', materia_seca: 90.0, proteina_cruda: 8.5, energia_metabolizable: 3.4, fibra_cruda: 2.2, calcio: 0.02, fosforo: 0.25 },
-    { ingrediente: 'Pasto elefante', materia_seca: 25.0, proteina_cruda: 8.0, energia_metabolizable: 2.0, fibra_cruda: 35.0, calcio: 0.5, fosforo: 0.2 },
-    { ingrediente: 'Melaza', materia_seca: 75.0, proteina_cruda: 3.0, energia_metabolizable: 3.0, fibra_cruda: 0.0, calcio: 0.8, fosforo: 0.1 },
-    { ingrediente: 'Harina de soya', materia_seca: 89.0, proteina_cruda: 48.0, energia_metabolizable: 3.3, fibra_cruda: 3.5, calcio: 0.3, fosforo: 0.7 },
-    { ingrediente: 'Caña de azúcar', materia_seca: 30.0, proteina_cruda: 4.0, energia_metabolizable: 2.2, fibra_cruda: 30.0, calcio: 0.2, fosforo: 0.15 },
-    { ingrediente: 'Harina de hueso', materia_seca: 95.0, proteina_cruda: 10.0, energia_metabolizable: 1.5, fibra_cruda: 0.0, calcio: 30.0, fosforo: 15.0 },
-    { ingrediente: 'Avena', materia_seca: 89.0, proteina_cruda: 13.0, energia_metabolizable: 2.8, fibra_cruda: 9.0, calcio: 0.08, fosforo: 0.4 },
-  ];
+  // Estado de datos (desde la BD)
+  const [allIngredientes, setAllIngredientes] = useState([]); // filas completas pivotadas por nutriente
+  const [ingredientes, setIngredientes] = useState([]); // filas filtradas visibles
+  const [nutrientColumns, setNutrientColumns] = useState([]); // columnas dinámicas [{id, nombre, unidad}]
+  const [loading, setLoading] = useState(true);
+  // Filtros adicionales
+  const [selectedNutrienteId, setSelectedNutrienteId] = useState('');
+  const [minValor, setMinValor] = useState('');
+  const [maxValor, setMaxValor] = useState('');
+  const [selectedTipo, setSelectedTipo] = useState(''); // Forrajes | Concentrados | Sales minerales
 
-  // Estado para los ingredientes filtrados
-  const [ingredientes, setIngredientes] = useState(initialIngredientes);
+  // Cargar ingredientes, nutrientes y características desde la API y pivotear
+  useEffect(() => {
+    const loadAll = async () => {
+      setLoading(true);
+      try {
+        const headers = authHeader();
+        if (!headers.Authorization) {
+          setLoading(false);
+          await Swal.fire({
+            title: 'Sesión requerida',
+            text: 'Debes iniciar sesión para consultar la composición bromatológica.',
+            icon: 'warning',
+            confirmButtonText: 'Ir a Iniciar Sesión'
+          }).then(() => {
+            if (typeof window !== 'undefined') window.location.href = '/login';
+          });
+          return;
+        }
+        const commonOpts = { headers };
+        const [respIng, respNut, respCar] = await Promise.all([
+          fetch(apiUrl('/api/ingredientes/api'), commonOpts),
+          fetch(apiUrl('/api/nutrientes/api'), commonOpts),
+          fetch(apiUrl('/api/caracteristicas-nutricionales/api'), commonOpts)
+        ]);
+
+        const isJSON = (r) => (r.headers.get('content-type') || '').includes('application/json');
+        if (respIng.status === 401 || respNut.status === 401 || respCar.status === 401) {
+          throw new Error('401');
+        }
+        if (!respIng.ok || !isJSON(respIng)) throw new Error('Error obteniendo ingredientes.');
+        if (!respNut.ok || !isJSON(respNut)) throw new Error('Error obteniendo nutrientes.');
+        if (!respCar.ok || !isJSON(respCar)) throw new Error('Error obteniendo características.');
+
+        const [ings, nuts, cars] = await Promise.all([
+          respIng.json(), respNut.json(), respCar.json()
+        ]);
+
+        const nutrientes = Array.isArray(nuts) ? nuts : [];
+        const nutrientesSorted = [...nutrientes].sort((a, b) => {
+          const an = (a.abreviatura || a.nombre || '').toString();
+          const bn = (b.abreviatura || b.nombre || '').toString();
+          return an.localeCompare(bn);
+        });
+        setNutrientColumns(
+          nutrientesSorted.map(n => ({ id: n.id_nutriente, nombre: n.nombre, unidad: n.unidad, abreviatura: n.abreviatura }))
+        );
+
+        const ingList = Array.isArray(ings) ? ings : [];
+        const carsList = Array.isArray(cars) ? cars : [];
+
+        // Construir mapa de valores por ingrediente -> nutriente
+        const byIng = {};
+        carsList.forEach(c => {
+          const iid = c.id_ingrediente;
+          const nid = c.id_nutriente;
+          if (iid == null || nid == null) return;
+          if (!byIng[iid]) byIng[iid] = {};
+          byIng[iid][nid] = c.valor;
+        });
+
+        // Construir filas pivotadas
+        const rows = ingList.map(ing => ({
+          id_ingrediente: ing.id_ingrediente ?? ing.id,
+          ingrediente: ing.nombre ?? ing.ingrediente ?? `ID ${ing.id_ingrediente ?? ing.id}`,
+          tipo: ing.tipo ?? '',
+          is_concentrado: Boolean(ing.is_concentrado),
+          is_sale_mineral: Boolean(ing.is_sale_mineral),
+          valores: byIng[ing.id_ingrediente] || {}
+        }));
+
+        setAllIngredientes(rows);
+        setIngredientes(rows);
+      } catch (e) {
+        console.error('Error cargando datos bromatológicos:', e);
+        setAllIngredientes([]);
+        setIngredientes([]);
+        setNutrientColumns([]);
+        if (String(e.message) === '401') {
+          await Swal.fire({
+            title: 'Sesión expirada',
+            text: 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.',
+            icon: 'warning',
+            confirmButtonText: 'Ir a Iniciar Sesión'
+          });
+          if (typeof window !== 'undefined') window.location.href = '/login';
+        } else {
+          Swal.fire({
+            title: 'Error',
+            text: 'No fue posible cargar la composición bromatológica desde la base de datos.',
+            icon: 'error',
+            confirmButtonText: 'Aceptar',
+          });
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadAll();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -43,25 +133,47 @@ const ComposicionBronatologica = () => {
   };
 
   const handleConsultar = () => {
-    if (!formData.ingrediente.trim()) {
-      Swal.fire({
-        title: 'Advertencia',
-        text: 'Por favor, ingrese el nombre del ingrediente para consultar',
-        icon: 'warning',
-        confirmButtonText: 'Aceptar',
-      });
-      setIngredientes(initialIngredientes); // Restablecer la tabla si no hay filtro
-      return;
+    // Filtros combinados: nombre de ingrediente + nutriente (rango)
+    const nameQuery = (formData.ingrediente || '').toLowerCase().trim();
+    const nid = selectedNutrienteId ? Number(selectedNutrienteId) : null;
+    const minV = minValor !== '' ? Number(minValor) : null;
+    const maxV = maxValor !== '' ? Number(maxValor) : null;
+    const tipoSel = (selectedTipo || '').trim();
+
+    let filteredIngredientes = allIngredientes;
+
+    if (nameQuery) {
+      filteredIngredientes = filteredIngredientes.filter((row) =>
+        String(row.ingrediente || '').toLowerCase().includes(nameQuery)
+      );
     }
 
-    const filteredIngredientes = initialIngredientes.filter((ing) =>
-      ing.ingrediente.toLowerCase().includes(formData.ingrediente.toLowerCase())
-    );
+    if (tipoSel) {
+      filteredIngredientes = filteredIngredientes.filter((row) => {
+        if (tipoSel === 'Concentrados') return !!row.is_concentrado;
+        if (tipoSel === 'Sales minerales') return !!row.is_sale_mineral;
+        if (tipoSel === 'Forrajes') return !row.is_concentrado && !row.is_sale_mineral;
+        // Fallback por texto si llegara otra etiqueta
+        return String(row.tipo || '').toLowerCase() === tipoSel.toLowerCase();
+      });
+    }
+
+    if (nid) {
+      filteredIngredientes = filteredIngredientes.filter((row) => {
+        const v = row.valores ? row.valores[nid] : undefined;
+        if (v == null) return false;
+        const num = Number(v);
+        if (!Number.isFinite(num)) return false;
+        if (minV != null && num < minV) return false;
+        if (maxV != null && num > maxV) return false;
+        return true;
+      });
+    }
 
     if (filteredIngredientes.length === 0) {
       Swal.fire({
         title: 'Sin resultados',
-        text: 'No se encontraron ingredientes que coincidan con la búsqueda',
+        text: 'No se encontraron ingredientes con los filtros aplicados',
         icon: 'info',
         confirmButtonText: 'Aceptar',
       });
@@ -70,109 +182,55 @@ const ComposicionBronatologica = () => {
     setIngredientes(filteredIngredientes);
   };
 
+  const handleLimpiar = () => {
+    setFormData((prev) => ({ ...prev, ingrediente: '' }));
+    setSelectedNutrienteId('');
+    setMinValor('');
+    setMaxValor('');
+    setSelectedTipo('');
+    setIngredientes(allIngredientes);
+  };
+
   return (
     <div className="composicion-container">
       <div className="composicion-header">
         <h2>Composición Bromatológica</h2>
       </div>
 
-      {/* Tabla de ingreso de datos */}
-      <div className="input-section">
-        <h3>Ingresar Ingrediente para Consultar</h3>
-        <div className="input-table-container">
-          <table className="input-table">
-            <thead>
-              <tr>
-                <th>Ingrediente</th>
-                <th>Materia Seca (%)</th>
-                <th>Proteína Cruda (%)</th>
-                <th>Energía Metabolizable (Mcal/kg)</th>
-                <th>Fibra Cruda (%)</th>
-                <th>Calcio (%)</th>
-                <th>Fósforo (%)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>
-                  <input
-                    type="text"
-                    name="ingrediente"
-                    value={formData.ingrediente}
-                    onChange={handleChange}
-                    placeholder="Ej: Maíz"
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    name="materia_seca"
-                    value={formData.materia_seca}
-                    onChange={handleChange}
-                    placeholder="Ej: 88.0"
-                    disabled
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    name="proteina_cruda"
-                    value={formData.proteina_cruda}
-                    onChange={handleChange}
-                    placeholder="Ej: 9.0"
-                    disabled
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    name="energia_metabolizable"
-                    value={formData.energia_metabolizable}
-                    onChange={handleChange}
-                    placeholder="Ej: 3.3"
-                    disabled
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    name="fibra_cruda"
-                    value={formData.fibra_cruda}
-                    onChange={handleChange}
-                    placeholder="Ej: 2.0"
-                    disabled
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    name="calcio"
-                    value={formData.calcio}
-                    onChange={handleChange}
-                    placeholder="Ej: 0.03"
-                    disabled
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    name="fosforo"
-                    value={formData.fosforo}
-                    onChange={handleChange}
-                    placeholder="Ej: 0.3"
-                    disabled
-                  />
-                </td>
-              </tr>
-            </tbody>
-          </table>
+
+        <div className="filters">
+          <div className="filter-item">
+            <label>Categoría</label>
+            <select value={selectedTipo} onChange={(e) => setSelectedTipo(e.target.value)}>
+              <option value="">Todas</option>
+              <option value="Forrajes">Forrajes</option>
+              <option value="Concentrados">Concentrados</option>
+              <option value="Sales minerales">Sales minerales</option>
+            </select>
+          </div>
+          <div className="filter-item">
+            <label>Nutriente</label>
+            <select value={selectedNutrienteId} onChange={(e) => setSelectedNutrienteId(e.target.value)}>
+              <option value="">Todos</option>
+              {nutrientColumns.map((n) => (
+                <option key={n.id} value={n.id}>{(n.abreviatura || n.nombre)}{n.unidad ? ` (${n.unidad})` : ''}</option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-item">
+            <label>Mín</label>
+            <input type="number" value={minValor} onChange={(e) => setMinValor(e.target.value)} placeholder="0" />
+          </div>
+          <div className="filter-item">
+            <label>Máx</label>
+            <input type="number" value={maxValor} onChange={(e) => setMaxValor(e.target.value)} placeholder="100" />
+          </div>
+          <div className="actions">
+            <button className="btn btn-primary" onClick={handleConsultar}>Aplicar</button>
+            <button className="btn btn-secondary" onClick={handleLimpiar}>Limpiar</button>
+          </div>
         </div>
-        <div className="actions">
-          <button className="btn btn-primary" onClick={handleConsultar}>
-            Consultar
-          </button>
-        </div>
-      </div>
+      
 
       {/* Tabla de información de ingredientes */}
       <div className="info-section">
@@ -182,26 +240,34 @@ const ComposicionBronatologica = () => {
             <thead>
               <tr>
                 <th>Ingrediente</th>
-                <th>Materia Seca (%)</th>
-                <th>Proteína Cruda (%)</th>
-                <th>Energía Metabolizable (Mcal/kg)</th>
-                <th>Fibra Cruda (%)</th>
-                <th>Calcio (%)</th>
-                <th>Fósforo (%)</th>
+                <th>Categoría</th>
+                {nutrientColumns.map((n) => (
+                  <th key={n.id}>{(n.abreviatura || n.nombre)}{n.unidad ? ` (${n.unidad})` : ''}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {ingredientes.map((ing, index) => (
-                <tr key={index}>
-                  <td>{ing.ingrediente}</td>
-                  <td>{ing.materia_seca}</td>
-                  <td>{ing.proteina_cruda}</td>
-                  <td>{ing.energia_metabolizable}</td>
-                  <td>{ing.fibra_cruda}</td>
-                  <td>{ing.calcio}</td>
-                  <td>{ing.fosforo}</td>
+              {loading ? (
+                <tr>
+                  <td colSpan={2 + nutrientColumns.length}>Cargando...</td>
                 </tr>
-              ))}
+              ) : ingredientes.length === 0 ? (
+                <tr>
+                  <td colSpan={2 + nutrientColumns.length}>Sin datos para mostrar</td>
+                </tr>
+              ) : (
+                ingredientes.map((row, index) => (
+                  <tr key={row.id_ingrediente ?? index}>
+                    <td>{row.ingrediente}</td>
+                    <td>{row.tipo || '-'}</td>
+                    {nutrientColumns.map((n) => (
+                      <td key={n.id} className="numeric" title={n.unidad || ''}>
+                        {row.valores && row.valores[n.id] != null ? Number(row.valores[n.id]).toFixed(2) : '-'}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

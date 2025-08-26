@@ -6,6 +6,8 @@ import './Navbar.css';
 const Navbar = () => {
   const { user, logout } = useAuth();
 
+  const hasPerm = (p) => Array.isArray(user?.permisos) && user.permisos.includes(p);
+
   return (
     <nav className="navbar navbar-expand-lg navbar-dark navbar-custom">
       <div className="container-fluid">
@@ -48,26 +50,30 @@ const Navbar = () => {
                     </li>
                   </ul>
                 </li>
-                <li className="nav-item dropdown">
-                  <a
-                    className="nav-link dropdown-toggle"
-                    href="#"
-                    id="alimentacionDropdown"
-                    role="button"
-                    data-bs-toggle="dropdown"
-                    aria-expanded="false"
-                  >
-                    Alimentación
-                  </a>
-                  <ul className="dropdown-menu" aria-labelledby="alimentacionDropdown">
-                    <li>
-                      <NavLink className="dropdown-item" to="/alimentacion/racion">Ración Animal</NavLink>
-                    </li>
-                    <li>
-                      <NavLink className="dropdown-item" to="/alimentacion/composicion">Composición Bromatológica</NavLink>
-                    </li>
-                  </ul>
-                </li>
+                {(hasPerm('racion:view') || user?.role === 'Instructor') && (
+                  <li className="nav-item dropdown">
+                    <a
+                      className="nav-link dropdown-toggle"
+                      href="#"
+                      id="alimentacionDropdown"
+                      role="button"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                    >
+                      Alimentación
+                    </a>
+                    <ul className="dropdown-menu" aria-labelledby="alimentacionDropdown">
+                      {(hasPerm('racion:view') || user?.role === 'Instructor') && (
+                        <li>
+                          <NavLink className="dropdown-item" to="/alimentacion/racion">Ración Animal</NavLink>
+                        </li>
+                      )}
+                      <li>
+                        <NavLink className="dropdown-item" to="/alimentacion/composicion">Composición Bromatológica</NavLink>
+                      </li>
+                    </ul>
+                  </li>
+                )}
                 <li className="nav-item dropdown">
                   <a
                     className="nav-link dropdown-toggle"

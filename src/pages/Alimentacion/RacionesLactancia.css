@@ -72,6 +72,27 @@
     background-color: #1ab4b4;
 }
 
+/* Blue action button */
+.btn-blue {
+    background-color: #00324C; /* theme primary */
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    box-shadow: 0 2px 6px rgba(0, 50, 76, 0.25);
+}
+.btn-blue:hover {
+    background-color: #1ab4b4; /* theme hover */
+}
+
+.result-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .result-card {
     display: flex;
     align-items: center;
@@ -116,6 +137,272 @@
     background-color: #1ab4b4;
 }
 
+.raciones-step {
+    margin-bottom: 1.5rem;
+    padding: 1.25rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+}
+
+.grid-responsive {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+}
+
+.card-grid.rich .result-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.06);
+    border-radius: 12px;
+}
+
+.badge {
+    display: inline-block;
+    background: #e6f0fa;
+    color: #00324C;
+    border: 1px solid #c7d7ea;
+    border-radius: 999px;
+    padding: 0.1rem 0.5rem;
+    font-size: 0.8rem;
+    margin-right: 0.35rem;
+}
+
+.kv {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    border-bottom: 1px dashed #e5e7eb;
+}
+.kv:last-child { border-bottom: 0; }
+
+.actions-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+
+.toggle input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+.highlight {
+    color: #0b7b83;
+}
+
+.success {
+    color: #0d9488;
+    margin: 0.5rem 0 1rem 0;
+}
+
+.alerts-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.25rem 0 0 0;
+    display: grid;
+    gap: 0.4rem;
+}
+.alerts-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.alert {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    display: inline-block;
+}
+.alert.ok { background-color: #16a34a; }
+.alert.warn { background-color: #f59e0b; }
+.alert.error { background-color: #dc2626; }
+
+.note {
+    font-size: 0.9rem;
+    color: #475569;
+    margin-top: 0.5rem;
+}
+
+.kv-table .kv span:last-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.pill {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    border: 1px solid transparent;
+}
+.pill.ok {
+    background: #e8f7ef;
+    color: #166534;
+    border-color: #86efac;
+}
+.pill.bad {
+    background: #fef2f2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
+.comp-table {
+    width: 100%;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+}
+.comp-head, .comp-row {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr 0.8fr 0.8fr;
+    gap: 0.5rem;
+    align-items: center;
+}
+.comp-head {
+    background: #f8fafc;
+    color: #334155;
+    font-weight: 600;
+    border-bottom: 1px solid #e5e7eb;
+}
+.comp-head > div, .comp-row > .comp-cell {
+    padding: 0.6rem 0.8rem;
+}
+.comp-body .comp-row:nth-child(odd) {
+    background: #fafafa;
+}
+.comp-nutriente { color: #0b2533; font-weight: 600; }
+.comp-req { color: #475569; }
+.comp-ap { color: #111827; }
+.comp-status { text-align: right; }
+
+.badge-ok {
+    background: #e8f7ef;
+    color: #166534;
+    border: 1px solid #86efac;
+    border-radius: 999px;
+    padding: 0.1rem 0.5rem;
+    font-size: 0.78rem;
+}
+.badge-bad {
+    background: #fff7ed;
+    color: #9a3412;
+    border: 1px solid #fed7aa;
+    border-radius: 999px;
+    padding: 0.1rem 0.5rem;
+    font-size: 0.78rem;
+}
+
+/* Controls and subhead rows */
+.comp-controls {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.5rem;
+}
+.comp-subhead {
+    background: #f1f5f9;
+    border-top: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+/* Progress bar for aporte vs requerido */
+.progress {
+    width: 100%;
+    height: 6px;
+    background: #e5e7eb;
+    border-radius: 999px;
+    margin-top: 6px;
+    overflow: hidden;
+}
+.progress .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #16a34a, #22c55e);
+}
+.progress .progress-bar.bad {
+    background: linear-gradient(90deg, #f97316, #ef4444);
+}
+
+/* Simple compact table used in Ración Óptima */
+.simple-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.simple-table thead {
+    background: #f8fafc;
+}
+.simple-table th,
+.simple-table td {
+    padding: 0.6rem 0.8rem;
+    text-align: center;
+    border-bottom: 1px solid #f1f5f9;
+}
+.simple-table tbody tr:nth-child(odd) {
+    background: #fafafa;
+}
+.simple-table tfoot th {
+    background: #f1f5f9;
+    font-weight: 700;
+}
+
+/* Minor tweak for pill spacing when used as chips */
+.kv-table .pill {
+    margin-bottom: 4px;
+}
+
+@media (max-width: 640px) {
+    .comp-head, .comp-row {
+        grid-template-columns: 1fr 0.8fr 0.8fr;
+    }
+    .comp-status { display: none; }
+}
+
+.full-btn {
+    width: 100%;
+    padding: 0.75rem;
+    font-size: 1rem;
+    border-radius: 6px;
+    background-color: #00324C;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+}
+
+.full-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.warn {
+    color: #b91c1c;
+    margin: 1rem 0;
+}
+
+.debug-card {
+    background: #0b2533;
+    color: #d7e9f3;
+    padding: 1rem;
+    border-radius: 8px;
+    overflow: auto;
+}
+
+.raciones-form + .raciones-results {
+    margin-top: 2rem;
+}
+
 @media (max-width: 768px) {
     .raciones-title {
         font-size: 2rem;
@@ -132,4 +419,5 @@
 
     .nav-link {
         margin: 0 0.5rem;
-    } }
+    }
+}

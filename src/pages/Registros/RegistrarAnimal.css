@@ -142,3 +142,246 @@
     .btn {
         width: 100%;
     } }
+
+/* ---- Listado y filtros estilo Hacienda ---- */
+.hacienda-list {
+    margin-top: 2rem;
+    background: #fff;
+    border-radius: 10px;
+    padding: 1rem 1.25rem 1.5rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+
+.filter-bar {
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: #f3f6f9;
+    border-radius: 8px;
+}
+
+.filter-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+}
+
+.filter-item {
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+    flex: 1 1 220px;
+}
+
+.filter-item label {
+    font-size: 0.9rem;
+    color: #444;
+    margin-bottom: 0.25rem;
+}
+
+.filter-item input,
+.filter-item select {
+    padding: 0.6rem 0.7rem;
+    border: 1px solid #d5dbe3;
+    border-radius: 6px;
+    background: #fff;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+@media (max-width: 1024px) {
+    .card-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .card-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.hacienda-card {
+    border: 1px solid #e6e9ee;
+    border-radius: 10px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: box-shadow .2s ease;
+}
+
+.hacienda-card:hover {
+    box-shadow: 0 6px 14px rgba(0,0,0,0.08);
+}
+
+.card-header {
+    padding: 0.75rem 1rem;
+    background: #f9fbfd;
+    border-bottom: 1px solid #eef2f7;
+}
+
+.chip {
+    display: inline-block;
+    font-size: 0.75rem;
+    color: #0b5ed7;
+    background: #e7f1ff;
+    border: 1px solid #cfe2ff;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    margin-right: 0.5rem;
+}
+
+.card-title {
+    margin: 0.25rem 0 0;
+    font-size: 1.1rem;
+    color: #0f2237;
+}
+
+.card-subtitle {
+    font-size: 0.9rem;
+    color: #5c6b7a;
+}
+
+.card-body {
+    padding: 0.9rem 1rem 0.5rem;
+}
+
+.info-row {
+    display: grid;
+    grid-template-columns: 20px 110px 1fr;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.35rem 0;
+}
+
+.info-row .icon {
+    color: #6b7a8c;
+}
+
+.info-row .label {
+    color: #516072;
+    font-size: 0.9rem;
+}
+
+.info-row .value {
+    color: #0f2237;
+    font-weight: 500;
+}
+
+.card-actions {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem 1rem;
+    margin-top: auto;
+}
+
+.empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: #6b7a8c;
+    padding: 1rem 0.5rem;
+}
+
+/* ---- Modal ---- */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    animation: fadeIn .2s ease;
+}
+
+.modal-content {
+    background: #fff;
+    border-radius: 10px;
+    max-width: 520px;
+    width: 92%;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    transform: translateY(8px) scale(.98);
+    animation: slideUp .25s ease forwards;
+}
+
+.modal-header {
+    border-bottom: 1px solid #eef2f7;
+    padding-bottom: .5rem;
+}
+
+.modal-body {
+    padding-top: .5rem;
+}
+
+.modal-footer {
+    border-top: 1px solid #eef2f7;
+    margin-top: .75rem;
+    padding-top: .75rem;
+}
+
+.modal-divider {
+    border: none;
+    border-top: 1px solid #eef2f7;
+    margin: .5rem 0 1rem;
+}
+
+.modal-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .75rem 1rem;
+}
+
+.modal-details .detail {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    align-items: center;
+    column-gap: .5rem;
+    padding: .35rem .25rem;
+    background: #fafbfc;
+    border: 1px solid #eef2f7;
+    border-radius: 8px;
+}
+
+.modal-details .detail .label {
+    color: #516072;
+    font-weight: 600;
+}
+
+.modal-details .detail .value {
+    color: #0f2237;
+    font-weight: 500;
+    word-break: break-word;
+}
+
+.modal-details .detail.detail--full {
+    grid-column: 1 / -1;
+    grid-template-columns: 140px 1fr;
+}
+
+@media (max-width: 560px) {
+    .modal-content { max-width: 96%; }
+    .modal-details { grid-template-columns: 1fr; }
+    .modal-details .detail,
+    .modal-details .detail.detail--full { grid-template-columns: 120px 1fr; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(14px) scale(.96); opacity: .96; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
