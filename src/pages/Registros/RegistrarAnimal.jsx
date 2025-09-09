@@ -23,6 +23,14 @@ const emptyForm = {
   identificador_unico: '',
   nombre: '',
   peso: '',
+  propietario: '',
+  es_mestizo: false,
+  raza_padre: '',
+  raza_madre: '',
+  porcentaje_raza_principal: '',
+  edad_anos: '',
+  edad_meses: '',
+  fecha_nacimiento: '',
   observaciones: '',
   id_raza: '',
   id_sexo: '',
@@ -127,7 +135,19 @@ export default function RegistrarAnimal() {
     required.forEach((f) => {
       if (!formData[f]) errs[f] = 'Requerido';
     });
+    
+    // Validaciones específicas
     if (formData.peso && (+formData.peso <= 0 || isNaN(formData.peso))) errs.peso = 'Debe ser > 0';
+    if (formData.edad_anos && (+formData.edad_anos < 0 || isNaN(formData.edad_anos))) errs.edad_anos = 'Debe ser >= 0';
+    if (formData.edad_meses && (+formData.edad_meses < 0 || +formData.edad_meses > 11 || isNaN(formData.edad_meses))) errs.edad_meses = 'Debe ser entre 0 y 11';
+    if (formData.porcentaje_raza_principal && (+formData.porcentaje_raza_principal < 0 || +formData.porcentaje_raza_principal > 100 || isNaN(formData.porcentaje_raza_principal))) errs.porcentaje_raza_principal = 'Debe ser entre 0 y 100';
+    
+    // Validación de mestizaje
+    if (formData.es_mestizo && !formData.raza_padre && !formData.raza_madre) {
+      errs.raza_padre = 'Debe especificar al menos una raza de los padres';
+      errs.raza_madre = 'Debe especificar al menos una raza de los padres';
+    }
+    
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -147,6 +167,14 @@ export default function RegistrarAnimal() {
         id_estado: formData.id_estado ? Number(formData.id_estado) : null,
         id_etapa: formData.id_etapa ? Number(formData.id_etapa) : null,
         peso: formData.peso ? Number(formData.peso) : null,
+        propietario: formData.propietario || null,
+        es_mestizo: Boolean(formData.es_mestizo),
+        raza_padre: formData.raza_padre ? Number(formData.raza_padre) : null,
+        raza_madre: formData.raza_madre ? Number(formData.raza_madre) : null,
+        porcentaje_raza_principal: formData.porcentaje_raza_principal ? Number(formData.porcentaje_raza_principal) : null,
+        edad_anos: formData.edad_anos ? Number(formData.edad_anos) : null,
+        edad_meses: formData.edad_meses ? Number(formData.edad_meses) : null,
+        fecha_nacimiento: formData.fecha_nacimiento || null,
       };
       const url = savedId
         ? `${API_ROUTES.ANIMALES_CRUD}${savedId}`
@@ -321,8 +349,13 @@ export default function RegistrarAnimal() {
           </div>
         </div>
 
-        {/* Selecciones 2 */}
+        {/* Propietario y Sexo */}
         <div className="form-row">
+          <div className="form-group">
+            <label>Propietario</label>
+            <input name="propietario" value={formData.propietario} onChange={handleChange} placeholder="Nombre del propietario" />
+            {errors.propietario && <span className="error-message">{errors.propietario}</span>}
+          </div>
           <div className="form-group">
             <label><FaVenusMars /> Sexo *</label>
             <select name="id_sexo" value={formData.id_sexo} onChange={handleChange}>
@@ -331,10 +364,105 @@ export default function RegistrarAnimal() {
             </select>
             {errors.id_sexo && <span className="error-message">{errors.id_sexo}</span>}
           </div>
+        </div>
+
+        {/* Peso y Mestizaje */}
+        <div className="form-row">
           <div className="form-group">
             <label><FaWeight /> Peso (kg) *</label>
-            <input type="number" name="peso" value={formData.peso} onChange={handleChange} />
+            <input type="number" step="0.01" name="peso" value={formData.peso} onChange={handleChange} />
             {errors.peso && <span className="error-message">{errors.peso}</span>}
+          </div>
+          <div className="form-group">
+            <label>
+              <input 
+                type="checkbox" 
+                name="es_mestizo" 
+                checked={formData.es_mestizo} 
+                onChange={(e) => setFormData(p => ({...p, es_mestizo: e.target.checked}))}
+                style={{marginRight: '8px'}}
+              />
+              Es mestizo
+            </label>
+          </div>
+        </div>
+
+        {/* Campos de mestizaje (condicionales) */}
+        {formData.es_mestizo && (
+          <>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Raza del Padre</label>
+                <select name="raza_padre" value={formData.raza_padre} onChange={handleChange}>
+                  <option value="">Seleccione</option>
+                  {razas.map((r) => <option key={r.id_raza} value={r.id_raza}>{r.nombre}</option>)}
+                </select>
+                {errors.raza_padre && <span className="error-message">{errors.raza_padre}</span>}
+              </div>
+              <div className="form-group">
+                <label>Raza de la Madre</label>
+                <select name="raza_madre" value={formData.raza_madre} onChange={handleChange}>
+                  <option value="">Seleccione</option>
+                  {razas.map((r) => <option key={r.id_raza} value={r.id_raza}>{r.nombre}</option>)}
+                </select>
+                {errors.raza_madre && <span className="error-message">{errors.raza_madre}</span>}
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Porcentaje Raza Principal (%)</label>
+                <input 
+                  type="number" 
+                  min="0" 
+                  max="100" 
+                  step="0.01" 
+                  name="porcentaje_raza_principal" 
+                  value={formData.porcentaje_raza_principal} 
+                  onChange={handleChange} 
+                  placeholder="0-100"
+                />
+                {errors.porcentaje_raza_principal && <span className="error-message">{errors.porcentaje_raza_principal}</span>}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Edad detallada */}
+        <div className="form-row">
+          <div className="form-group">
+            <label>Fecha de Nacimiento</label>
+            <input 
+              type="date" 
+              name="fecha_nacimiento" 
+              value={formData.fecha_nacimiento} 
+              onChange={handleChange}
+            />
+            {errors.fecha_nacimiento && <span className="error-message">{errors.fecha_nacimiento}</span>}
+          </div>
+          <div className="form-group">
+            <label>Edad (Años)</label>
+            <input 
+              type="number" 
+              min="0" 
+              name="edad_anos" 
+              value={formData.edad_anos} 
+              onChange={handleChange} 
+              placeholder="Años"
+            />
+            {errors.edad_anos && <span className="error-message">{errors.edad_anos}</span>}
+          </div>
+          <div className="form-group">
+            <label>Edad (Meses)</label>
+            <input 
+              type="number" 
+              min="0" 
+              max="11" 
+              name="edad_meses" 
+              value={formData.edad_meses} 
+              onChange={handleChange} 
+              placeholder="0-11"
+            />
+            {errors.edad_meses && <span className="error-message">{errors.edad_meses}</span>}
           </div>
         </div>
 
@@ -492,6 +620,14 @@ export default function RegistrarAnimal() {
                             identificador_unico: a.identificador_unico || '',
                             nombre: a.nombre || '',
                             peso: a.peso?.toString() || '',
+                            propietario: a.propietario || '',
+                            es_mestizo: Boolean(a.es_mestizo),
+                            raza_padre: a.raza_padre?.toString() || '',
+                            raza_madre: a.raza_madre?.toString() || '',
+                            porcentaje_raza_principal: a.porcentaje_raza_principal?.toString() || '',
+                            edad_anos: a.edad_anos?.toString() || '',
+                            edad_meses: a.edad_meses?.toString() || '',
+                            fecha_nacimiento: a.fecha_nacimiento || '',
                             observaciones: a.observaciones || '',
                             id_raza: a.id_raza?.toString() || '',
                             id_sexo: a.id_sexo?.toString() || '',
@@ -533,10 +669,27 @@ export default function RegistrarAnimal() {
               <hr className="modal-divider" />
               <div className="modal-details">
                 <div className="detail"><span className="label">Identificador</span><span className="value">{selectedAnimal.identificador_unico || '-'}</span></div>
+                <div className="detail"><span className="label">Propietario</span><span className="value">{selectedAnimal.propietario || '-'}</span></div>
                 <div className="detail"><span className="label">Especie</span><span className="value">{especiesById.get(selectedAnimal.id_especie) || '-'}</span></div>
                 <div className="detail"><span className="label">Raza</span><span className="value">{razasById.get(selectedAnimal.id_raza) || '-'}</span></div>
+                {selectedAnimal.es_mestizo && (
+                  <>
+                    <div className="detail"><span className="label">Mestizo</span><span className="value">Sí</span></div>
+                    <div className="detail"><span className="label">Raza Padre</span><span className="value">{razasById.get(selectedAnimal.raza_padre) || '-'}</span></div>
+                    <div className="detail"><span className="label">Raza Madre</span><span className="value">{razasById.get(selectedAnimal.raza_madre) || '-'}</span></div>
+                    {selectedAnimal.porcentaje_raza_principal && (
+                      <div className="detail"><span className="label">% Raza Principal</span><span className="value">{selectedAnimal.porcentaje_raza_principal}%</span></div>
+                    )}
+                  </>
+                )}
                 <div className="detail"><span className="label">Sexo</span><span className="value">{sexosById.get(selectedAnimal.id_sexo) || '-'}</span></div>
                 <div className="detail"><span className="label">Peso</span><span className="value">{selectedAnimal.peso ?? '-'} kg</span></div>
+                {(selectedAnimal.edad_anos !== null && selectedAnimal.edad_anos !== undefined) && (
+                  <div className="detail"><span className="label">Edad</span><span className="value">{selectedAnimal.edad_anos} años {selectedAnimal.edad_meses || 0} meses</span></div>
+                )}
+                {selectedAnimal.fecha_nacimiento && (
+                  <div className="detail"><span className="label">Fecha Nacimiento</span><span className="value">{new Date(selectedAnimal.fecha_nacimiento).toLocaleDateString()}</span></div>
+                )}
                 <div className="detail"><span className="label">Estado</span><span className="value">{estadosById.get(selectedAnimal.id_estado) || '-'}</span></div>
                 <div className="detail"><span className="label">Etapa</span><span className="value">{etapasById.get(selectedAnimal.id_etapa) || '-'}</span></div>
                 <div className="detail"><span className="label">Hacienda</span><span className="value">{haciendasById.get(String(selectedAnimal.id_hacienda)) || '-'}</span></div>

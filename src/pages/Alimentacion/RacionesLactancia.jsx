@@ -15,6 +15,7 @@ const initialForm = {
   id_requerimiento: '',
   fecha_calculo: '',
   ms_total: '',
+  peso: '',
   produccion_leche: '',
   grasa_pct: '',
   calculado_por: '',
@@ -91,6 +92,9 @@ const RacionesLactancia = () => {
   const [ingredientesSel, setIngredientesSel] = useState([]); // ids seleccionados
   const [ingredientSearch, setIngredientSearch] = useState('');
   const [results, setResults] = useState(emptyResults);
+  // Tanteo: kg tal cual (base húmeda) por ingrediente seleccionado
+  const [kilosPorIng, setKilosPorIng] = useState({}); // { [id_ingrediente]: string|number }
+  const [tanteoError, setTanteoError] = useState(null);
   
   const [loading, setLoading] = useState(false); // carga inicial de selects
   const [calculating, setCalculating] = useState(false);
@@ -163,18 +167,68 @@ const RacionesLactancia = () => {
     setIngredientesSel((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
+    setKilosPorIng((prev) => {
+      const next = { ...prev };
+      if (prev[id] == null) next[id] = '';
+      return next;
+    });
   };
   const seleccionarTodos = () => {
     setIngredientesSel(ingredientesDisp.map((i) => i.id_ingrediente));
   };
   const limpiarSeleccion = () => {
     setIngredientesSel([]);
+    setKilosPorIng({});
+  };
+  const handleKgChange = (id, val) => {
+    // Guardar como string para permitir edición libre, pero convertir a número al usar
+    setKilosPorIng((prev) => ({ ...prev, [id]: val }));
   };
   const handleSubmit = async (e) => {
     e.preventDefault();
     setCalculating(true);
     setApiError(null);
+    setTanteoError(null);
+    // Preparar ingredientes (tanteo) -> inclusion_pct según ms_total, convirtiendo kg tal cual a kg MS usando ms_pct
+    let ingredientesPayload = [];
+    const msTotalNum = parseFloat(formData.ms_total);
+    const selIds = ingredientesSel || [];
+    if (selIds.length && !isNaN(msTotalNum) && msTotalNum > 0) {
+      // sumar kg ingresados (solo valores válidos > 0)
+      const pares = selIds.map((id) => ({ id, kg_af: parseFloat(kilosPorIng?.[id]) }))
+        .filter((p) => !isNaN(p.kg_af) && p.kg_af > 0);
+      // Convertir a kg MS por ingrediente usando ms_pct del catálogo
+      const paresMs = pares.map((p) => {
+        const ingInfo = ingredientesDisp.find((x) => x.id_ingrediente === p.id);
+        const ms_pct = typeof ingInfo?.ms_pct === 'number' ? ingInfo.ms_pct : 100; // fallback 100% MS si no hay dato
+        const ms_frac = Math.max(0, Math.min(1, ms_pct / 100));
+        const kg_ms = p.kg_af * ms_frac;
+        return { id: p.id, kg_af: p.kg_af, kg_ms };
+      });
+      const sumaAf = paresMs.reduce((acc, p) => acc + p.kg_af, 0);
+      const sumaMs = paresMs.reduce((acc, p) => acc + p.kg_ms, 0);
+      if (sumaMs > 0) {
+        if (sumaMs - msTotalNum > 1e-6) {
+          setCalculating(false);
+          setTanteoError(`La suma de kg MS calculada (${sumaMs.toFixed(3)} kg) excede la MS total (${msTotalNum.toFixed(3)} kg).`);
+          return;
+        }
+        ingredientesPayload = paresMs.map((p) => ({
+          id_ingrediente: p.id,
+          inclusion_pct: (p.kg_ms / msTotalNum) * 100.0,
+        }));
+      }
+    }
     try {
+      // Resolver peso a enviar: usar el ingresado o el del animal seleccionado
+      const selAnimal = animales.find(a => String(a.id) === String(formData.id_animal));
+      const pesoNum = parseFloat(formData.peso ?? '');
+      const pesoToSend = !isNaN(pesoNum) ? pesoNum : (typeof selAnimal?.peso === 'number' ? selAnimal.peso : undefined);
+      if (pesoToSend === undefined) {
+        setCalculating(false);
+        setApiError('El animal no tiene peso registrado y no se ingresó un peso manual. Ingrese el peso (kg).');
+        return;
+      }
       const response = await fetch(apiUrl('/api/raciones/api/calcular'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader() },
@@ -186,13 +240,13 @@ const RacionesLactancia = () => {
           ms_total: formData.ms_total || undefined,
           calculado_por: formData.calculado_por || undefined,
           observaciones: formData.observaciones || undefined,
-          peso: formData.peso || undefined,
+          peso: pesoToSend,
           produccion_leche: formData.produccion_leche,
           grasa_pct: formData.grasa_pct,
           guardar,
           optimizar: true,
-          ingredientes_ids: ingredientesSel,
-          ingredientes: [],
+          ingredientes_ids: ingredientesSel.map((v) => parseInt(v, 10)).filter((n) => !isNaN(n)),
+          ingredientes: ingredientesPayload,
         }),
       });
       const data = await response.json();
@@ -433,25 +487,90 @@ const RacionesLactancia = () => {
                     (ing.nombre || '').toLowerCase().includes(q)
                   );
                 })).map((ing) => (
-                  <label key={ing.id_ingrediente} className={`check-item ${ingredientesSel.includes(ing.id_ingrediente) ? 'checked' : ''}`}>
-                    <input type="checkbox" checked={ingredientesSel.includes(ing.id_ingrediente)} onChange={() => toggleIngrediente(ing.id_ingrediente)} />
-                    <span>
-                      {ing.nombre} <span className="muted">(ID {ing.id_ingrediente})</span>
-                      {ing.costo_kg != null && (
-                        <span className="pill" style={{ marginLeft: 8 }}>Costo ${Number(ing.costo_kg).toFixed(2)}/kg</span>
-                      )}
-                    </span>
-                  </label>
+                  <div key={ing.id_ingrediente} className={`check-item ${ingredientesSel.includes(ing.id_ingrediente) ? 'checked' : ''}`}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <input type="checkbox" checked={ingredientesSel.includes(ing.id_ingrediente)} onChange={() => toggleIngrediente(ing.id_ingrediente)} />
+                      <span>
+                        {ing.nombre} <span className="muted">(ID {ing.id_ingrediente})</span>
+                        {ing.costo_kg != null && (
+                          <span className="pill" style={{ marginLeft: 8 }}>Costo ${Number(ing.costo_kg).toFixed(2)}/kg</span>
+                        )}
+                      </span>
+                    </label>
+                    {ingredientesSel.includes(ing.id_ingrediente) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                        <label className="muted" style={{ fontSize: 12 }}>Kg (tal cual):</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          value={kilosPorIng[ing.id_ingrediente] ?? ''}
+                          onChange={(e) => handleKgChange(ing.id_ingrediente, e.target.value)}
+                          style={{ width: 110, padding: '0.35rem 0.5rem' }}
+                        />
+                        {typeof ing.ms_pct === 'number' && (
+                          <span className="muted" style={{ fontSize: 12 }}>MS {Number(ing.ms_pct).toFixed(1)}%</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
             <p className="muted">La optimización usará únicamente los ingredientes seleccionados. Seleccionados: {ingredientesSel.length}</p>
+            {(() => {
+              const msNum = parseFloat(formData.ms_total);
+              const ids = ingredientesSel || [];
+              const pares = ids.map((id) => ({ id, kg_af: parseFloat(kilosPorIng?.[id]) }))
+                .filter((p) => !isNaN(p.kg_af) && p.kg_af > 0);
+              const sumaAf = pares.reduce((a, p) => a + p.kg_af, 0);
+              // convertir a MS con ms_pct
+              const sumaMs = pares.reduce((acc, p) => {
+                const ingInfo = ingredientesDisp.find((x) => x.id_ingrediente === p.id);
+                const ms_pct = typeof ingInfo?.ms_pct === 'number' ? ingInfo.ms_pct : 100;
+                const ms_frac = Math.max(0, Math.min(1, ms_pct / 100));
+                return acc + p.kg_af * ms_frac;
+              }, 0);
+              if (isNaN(msNum) || msNum <= 0) return (
+                <div className="pill" style={{ marginTop: 8 }}>
+                  Suma tanteo: {sumaAf.toFixed(3)} kg tal cual · MS estimada: {sumaMs.toFixed(3)} kg
+                </div>
+              );
+              const restanteMs = msNum - sumaMs;
+              return (
+                <div className={`pill ${restanteMs + 1e-6 >= 0 ? 'ok' : 'bad'}`} style={{ marginTop: 8 }}>
+                  Suma tanteo: {sumaAf.toFixed(3)} kg tal cual · MS estimada: {sumaMs.toFixed(3)} kg · Restante MS: {restanteMs.toFixed(3)} kg
+                </div>
+              );
+            })()}
+            {tanteoError && (<p className="error" style={{ marginTop: 6 }}>{tanteoError}</p>)}
           </fieldset>
 
           {/* Parámetros */}
           <fieldset className="raciones-step" data-aos="fade-right">
             <legend>3. Parámetros de cálculo</legend>
             <div className="grid-responsive">
+              <div className="form-group">
+                <label>Peso (kg)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  name="peso"
+                  value={formData.peso}
+                  onChange={handleChange}
+                  placeholder={() => {
+                    const a = animales.find(x => String(x.id) === String(formData.id_animal));
+                    return a && typeof a.peso === 'number' ? String(a.peso) : '';
+                  }}
+                />
+                {(() => {
+                  const a = animales.find(x => String(x.id) === String(formData.id_animal));
+                  if (a && typeof a.peso === 'number' && (formData.peso === '' || isNaN(parseFloat(formData.peso)))) {
+                    return (<small className="muted">Usando peso del animal: {Number(a.peso).toFixed(1)} kg si no ingresa uno.</small>);
+                  }
+                  return null;
+                })()}
+              </div>
               <div className="form-group">
                 <label>Fecha</label>
                 <input type="date" name="fecha_calculo" value={formData.fecha_calculo} onChange={handleChange} required />

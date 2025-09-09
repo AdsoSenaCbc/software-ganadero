@@ -9,7 +9,6 @@ import Swal from 'sweetalert2/dist/sweetalert2.js';
 import 'sweetalert2/dist/sweetalert2.min.css';
 import {
   FaBuilding,
-  FaUser,
   FaMapMarkerAlt,
   FaAddressCard,
   FaPhone,
@@ -25,7 +24,11 @@ const RegistrarHacienda = () => {
     nombre: '',
     tel_contacto: '',
     ubicacion: '',
-    descripcion: '',
+    propietario: '',
+    area: '',
+    observaciones: '',
+    latitud: '',
+    longitud: '',
     id_departamento: '',
     id_municipio: '',
     id_usuario: '',
@@ -88,7 +91,7 @@ const RegistrarHacienda = () => {
       const items = Array.isArray(data) ? data : (data?.items || []);
       // Si el endpoint de listado no trae campos de detalle, los completamos con GET por id
       const needsEnrich = items.some(
-        (h) => h.tel_contacto === undefined && h.ubicacion === undefined && h.descripcion === undefined
+        (h) => h.tel_contacto === undefined && h.ubicacion === undefined && h.propietario === undefined
       );
       if (!needsEnrich) {
         setHaciendas(items);
@@ -139,16 +142,31 @@ const RegistrarHacienda = () => {
   const handleSave = async () => {
     const required = [
       'nombre',
+      'propietario',
       'tel_contacto',
       'ubicacion',
       'id_departamento',
       'id_municipio',
-      'id_usuario',
     ];
     const newErr = {};
     required.forEach((f) => {
       if (!formData[f] && formData[f] !== 0) newErr[f] = 'Requerido';
     });
+    // Validaciones adicionales
+    if (formData.area !== '' && !isNaN(formData.area)) {
+      const a = parseFloat(formData.area);
+      if (!(a > 0)) newErr.area = 'Debe ser > 0';
+    } else if (formData.area !== '' && isNaN(formData.area)) {
+      newErr.area = 'Debe ser numérico';
+    }
+    if (formData.latitud !== '') {
+      const v = parseFloat(formData.latitud);
+      if (isNaN(v) || v < -90 || v > 90) newErr.latitud = 'Latitud inválida (-90..90)';
+    }
+    if (formData.longitud !== '') {
+      const v = parseFloat(formData.longitud);
+      if (isNaN(v) || v < -180 || v > 180) newErr.longitud = 'Longitud inválida (-180..180)';
+    }
     if (Object.keys(newErr).length) {
       console.log('Validation errors:', newErr);
       setErrors(newErr);
@@ -166,6 +184,9 @@ const RegistrarHacienda = () => {
         id_departamento: formData.id_departamento ? Number(formData.id_departamento) : null,
         id_municipio: formData.id_municipio ? Number(formData.id_municipio) : null,
         id_usuario: formData.id_usuario ? Number(formData.id_usuario) : null,
+        area: formData.area === '' ? null : Number(formData.area),
+        latitud: formData.latitud === '' ? null : Number(formData.latitud),
+        longitud: formData.longitud === '' ? null : Number(formData.longitud),
       };
       
       console.log('Sending payload:', JSON.stringify(payload, null, 2));
@@ -197,11 +218,14 @@ const RegistrarHacienda = () => {
 
     const rows = [
       ['Nombre', formData.nombre],
-      ['Descripción', formData.descripcion],
+      ['Propietario', formData.propietario],
+      ['Área (ha)', formData.area],
+      ['Observaciones', formData.observaciones],
       ['Departamento', departamentos.find((d) => d.id_departamento == formData.id_departamento)?.nombre_departamento || ''],
       ['Municipio', municipios.find((m) => m.id_municipio == formData.id_municipio)?.nombre_municipio || ''],
-      ['Usuario', usuarios.find((u) => u.id_usuario == formData.id_usuario)?.nombres || ''],
       ['Ubicación', formData.ubicacion],
+      ['Latitud', formData.latitud],
+      ['Longitud', formData.longitud],
       ['Teléfono', formData.tel_contacto],
     ];
 
@@ -247,7 +271,11 @@ const RegistrarHacienda = () => {
       nombre: '',
       tel_contacto: '',
       ubicacion: '',
-      descripcion: '',
+      propietario: '',
+      area: '',
+      observaciones: '',
+      latitud: '',
+      longitud: '',
       id_departamento: '',
       id_municipio: '',
       id_usuario: '',
@@ -338,7 +366,7 @@ const RegistrarHacienda = () => {
       </div>
 
       <div className="hacienda-form">
-        {/* nombre & descripción */}
+        <h3 className="section-title">Información general</h3>
         <div className="form-row">
           <div className="form-group">
             <label>
@@ -353,23 +381,82 @@ const RegistrarHacienda = () => {
             />
             {errors.nombre && <span className="error-message">{errors.nombre}</span>}
           </div>
-
           <div className="form-group">
             <label>
-              <FaAddressCard /> Descripción
+              <FaAddressCard /> Propietario *
             </label>
             <input
               type="text"
-              name="descripcion"
-              value={formData.descripcion}
+              name="propietario"
+              value={formData.propietario}
               onChange={handleChange}
-              className={errors.descripcion ? 'error' : ''}
+              className={errors.propietario ? 'error' : ''}
             />
-            {errors.descripcion && (
-              <span className="error-message">{errors.descripcion}</span>
+            {errors.propietario && (
+              <span className="error-message">{errors.propietario}</span>
             )}
           </div>
         </div>
+
+        <h3 className="section-title">Dimensiones</h3>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Área (ha)</label>
+            <input
+              type="number"
+              step="0.01"
+              name="area"
+              value={formData.area}
+              onChange={handleChange}
+              className={errors.area ? 'error' : ''}
+            />
+            {errors.area && <span className="error-message">{errors.area}</span>}
+          </div>
+        </div>
+
+        <h3 className="section-title">Coordenadas</h3>
+        {/* lat/lon & mapa */}
+        <div className="form-row">
+          <div className="form-group">
+            <label>Latitud</label>
+            <input type="number" step="0.000001" name="latitud" value={formData.latitud} onChange={handleChange} className={errors.latitud ? 'error' : ''} />
+            {errors.latitud && <span className="error-message">{errors.latitud}</span>}
+          </div>
+          <div className="form-group">
+            <label>Longitud</label>
+            <input type="number" step="0.000001" name="longitud" value={formData.longitud} onChange={handleChange} className={errors.longitud ? 'error' : ''} />
+            {errors.longitud && <span className="error-message">{errors.longitud}</span>}
+          </div>
+        </div>
+        {(formData.latitud !== '' && formData.longitud !== '' && !errors.latitud && !errors.longitud) && (
+          <div className="map-preview" role="region" aria-label="Mapa de ubicación">
+            <iframe
+              title="Mapa"
+              width="100%"
+              height="300"
+              style={{ border: 0 }}
+              src={`https://www.openstreetmap.org/export/embed.html?layer=mapnik&marker=${encodeURIComponent(formData.latitud)},${encodeURIComponent(formData.longitud)}&zoom=15`}
+            />
+            <div className="muted" style={{ marginTop: 4 }}>
+              <a target="_blank" rel="noreferrer" href={`https://www.openstreetmap.org/?mlat=${encodeURIComponent(formData.latitud)}&mlon=${encodeURIComponent(formData.longitud)}#map=15/${encodeURIComponent(formData.latitud)}/${encodeURIComponent(formData.longitud)}`}>Abrir en OpenStreetMap</a>
+            </div>
+          </div>
+        )}
+
+        <h3 className="section-title">Observaciones</h3>
+        <div className="form-row">
+          <div className="form-group" style={{flex: 1}}>
+            <label>Observaciones</label>
+            <textarea
+              name="observaciones"
+              value={formData.observaciones}
+              onChange={handleChange}
+              rows={4}
+            />
+          </div>
+        </div>
+
+        
 
         {/* depto & municipio */}
         <div className="form-row">
@@ -418,31 +505,9 @@ const RegistrarHacienda = () => {
           </div>
         </div>
 
-        {/* usuario */}
-        <div className="form-row">
-          <div className="form-group">
-            <label>
-              <FaUser /> ID Usuario *
-            </label>
-            <select
-              name="id_usuario"
-              value={formData.id_usuario}
-              onChange={handleChange}
-              className={errors.id_usuario ? 'error' : ''}
-            >
-              <option value="">Seleccione</option>
-              {usuarios.map((u) => (
-                <option key={u.id_usuario} value={u.id_usuario}>
-                  {`${u.nombres} ${u.apellidos}`}
-                </option>
-              ))}
-            </select>
-            {errors.id_usuario && (
-              <span className="error-message">{errors.id_usuario}</span>
-            )}
-          </div>
-        </div>
+        {/* usuario removido del UI a solicitud del usuario */}
 
+        <h3 className="section-title">Ubicación</h3>
         {/* ubicación & teléfono */}
         <div className="form-row">
           <div className="form-group">
@@ -557,8 +622,12 @@ const RegistrarHacienda = () => {
                     </div>
                     <div className="info-row">
                       <FaAddressCard className="icon" />
-                      <span className="label">Descripción</span>
-                      <span className="value">{h.descripcion || '-'}</span>
+                      <span className="label">Propietario</span>
+                      <span className="value">{h.propietario || '-'}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="label">Área (ha)</span>
+                      <span className="value">{h.area ?? '-'}</span>
                     </div>
                   </div>
                   <div className="card-actions">
@@ -571,9 +640,13 @@ const RegistrarHacienda = () => {
                       onClick={() => {
                         setFormData({
                           nombre: h.nombre || '',
+                          propietario: h.propietario || '',
                           tel_contacto: h.tel_contacto || '',
                           ubicacion: h.ubicacion || '',
-                          descripcion: h.descripcion || '',
+                          area: (h.area ?? '') === '' ? '' : String(h.area),
+                          observaciones: h.observaciones || '',
+                          latitud: (h.latitud ?? '') === '' ? '' : String(h.latitud),
+                          longitud: (h.longitud ?? '') === '' ? '' : String(h.longitud),
                           id_departamento: h.id_departamento?.toString() || '',
                           id_municipio: h.id_municipio?.toString() || '',
                           id_usuario: h.id_usuario?.toString() || '',
@@ -621,7 +694,10 @@ const RegistrarHacienda = () => {
                 <li className="detail-item"><span className="label">Usuario</span><span className="value">{usersById.get(selectedHacienda.id_usuario) || '-'}</span></li>
                 <li className="detail-item"><span className="label">Ubicación</span><span className="value">{selectedHacienda.ubicacion || '-'}</span></li>
                 <li className="detail-item"><span className="label">Hacienda</span><span className="value">{selectedHacienda.nombre || '-'}</span></li>
-                <li className="detail-item detail-item--full"><span className="label">Observaciones</span><span className="value">{selectedHacienda.descripcion || '-'}</span></li>
+                <li className="detail-item"><span className="label">Propietario</span><span className="value">{selectedHacienda.propietario || '-'}</span></li>
+                <li className="detail-item"><span className="label">Área (ha)</span><span className="value">{selectedHacienda.area ?? '-'}</span></li>
+                <li className="detail-item detail-item--full"><span className="label">Observaciones</span><span className="value">{selectedHacienda.observaciones || '-'}</span></li>
+                <li className="detail-item"><span className="label">Lat/Lon</span><span className="value">{(selectedHacienda.latitud != null && selectedHacienda.longitud != null) ? `${selectedHacienda.latitud}, ${selectedHacienda.longitud}` : '-'}</span></li>
               </ul>
             </div>
 
