@@ -47,6 +47,7 @@ export default function RegistrarAnimal() {
   const [formData, setFormData] = useState(emptyForm);
   const [errors, setErrors] = useState({});
   const [savedId, setSavedId] = useState(null);
+  const [propietarios, setPropietarios] = useState([]);
   // Modal de consulta
   const [showModal, setShowModal] = useState(false);
   const [selectedAnimal, setSelectedAnimal] = useState(null);
@@ -103,6 +104,66 @@ export default function RegistrarAnimal() {
     if (token) loadAnimals();
   }, [token]);
 
+  // Cargar propietarios desde haciendas
+  useEffect(() => {
+    const loadPropietarios = async () => {
+      if (!token) return;
+      try {
+        const { data } = await axiosInstance.get(API_ROUTES.HACIENDAS, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const haciendas = Array.isArray(data) ? data : (data?.items || []);
+        
+        // Extraer propietarios únicos
+        const propietariosUnicos = [...new Set(
+          haciendas
+            .map(h => h.propietario)
+            .filter(p => p && p.trim() !== '')
+        )].sort();
+        
+        setPropietarios(propietariosUnicos);
+      } catch (err) {
+        console.error('Error cargando propietarios:', err);
+      }
+    };
+
+    loadPropietarios();
+  }, [token]);
+
+  // Función para calcular edad automáticamente
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return { years: '', months: '' };
+    
+    const today = new Date();
+    const birth = new Date(birthDate);
+    
+    // Calcular años completos
+    let years = today.getFullYear() - birth.getFullYear();
+    let monthsFromYears = today.getMonth() - birth.getMonth();
+    
+    if (monthsFromYears < 0) {
+      years--;
+      monthsFromYears += 12;
+    }
+    
+    // Si el día actual es menor que el día de nacimiento, restar un mes
+    if (today.getDate() < birth.getDate()) {
+      monthsFromYears--;
+      if (monthsFromYears < 0) {
+        years--;
+        monthsFromYears += 12;
+      }
+    }
+    
+    // Calcular el total de meses vividos
+    const totalMonths = (years * 12) + monthsFromYears;
+    
+    return { 
+      years: years.toString(), 
+      months: totalMonths.toString() 
+    };
+  };
+
   // Cerrar modal con tecla ESC
   useEffect(() => {
     const onKey = (e) => {
@@ -115,7 +176,19 @@ export default function RegistrarAnimal() {
   /* ------------ helpers ------------ */
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((p) => ({ ...p, [name]: value }));
+    
+    // Si es fecha de nacimiento, calcular edad automáticamente
+    if (name === 'fecha_nacimiento') {
+      const age = calculateAge(value);
+      setFormData((p) => ({ 
+        ...p, 
+        [name]: value,
+        edad_anos: age.years,
+        edad_meses: age.months
+      }));
+    } else {
+      setFormData((p) => ({ ...p, [name]: value }));
+    }
     setErrors((p) => ({ ...p, [name]: undefined }));
   };
 
@@ -139,7 +212,7 @@ export default function RegistrarAnimal() {
     // Validaciones específicas
     if (formData.peso && (+formData.peso <= 0 || isNaN(formData.peso))) errs.peso = 'Debe ser > 0';
     if (formData.edad_anos && (+formData.edad_anos < 0 || isNaN(formData.edad_anos))) errs.edad_anos = 'Debe ser >= 0';
-    if (formData.edad_meses && (+formData.edad_meses < 0 || +formData.edad_meses > 11 || isNaN(formData.edad_meses))) errs.edad_meses = 'Debe ser entre 0 y 11';
+    if (formData.edad_meses && (+formData.edad_meses < 0 || isNaN(formData.edad_meses))) errs.edad_meses = 'Debe ser >= 0';
     if (formData.porcentaje_raza_principal && (+formData.porcentaje_raza_principal < 0 || +formData.porcentaje_raza_principal > 100 || isNaN(formData.porcentaje_raza_principal))) errs.porcentaje_raza_principal = 'Debe ser entre 0 y 100';
     
     // Validación de mestizaje
@@ -315,7 +388,7 @@ export default function RegistrarAnimal() {
       </div>
 
       <div className="animal-form">
-        {/* Identificación */}
+        {/* Identificación y Sexo */}
         <div className="form-row">
           <div className="form-group">
             <label><FaTag /> Identificador *</label>
@@ -329,7 +402,31 @@ export default function RegistrarAnimal() {
           </div>
         </div>
 
-        {/* Selecciones 1 */}
+        {/* Sexo y Propietario */}
+        <div className="form-row">
+          <div className="form-group">
+            <label><FaVenusMars /> Sexo *</label>
+            <select name="id_sexo" value={formData.id_sexo} onChange={handleChange}>
+              <option value="">Seleccione</option>
+              {sexos.map((s) => <option key={s.id_sexo} value={s.id_sexo}>{s.nombre}</option>)}
+            </select>
+            {errors.id_sexo && <span className="error-message">{errors.id_sexo}</span>}
+          </div>
+          <div className="form-group">
+            <label>Propietario</label>
+            <select name="propietario" value={formData.propietario} onChange={handleChange}>
+              <option value="">Seleccionar propietario...</option>
+              {propietarios.map((propietario, index) => (
+                <option key={index} value={propietario}>
+                  {propietario}
+                </option>
+              ))}
+            </select>
+            {errors.propietario && <span className="error-message">{errors.propietario}</span>}
+          </div>
+        </div>
+
+        {/* Especie y Raza */}
         <div className="form-row">
           <div className="form-group">
             <label><FaPaw /> Especie *</label>
@@ -346,23 +443,6 @@ export default function RegistrarAnimal() {
               {razas.map((r) => <option key={r.id_raza} value={r.id_raza}>{r.nombre}</option>)}
             </select>
             {errors.id_raza && <span className="error-message">{errors.id_raza}</span>}
-          </div>
-        </div>
-
-        {/* Propietario y Sexo */}
-        <div className="form-row">
-          <div className="form-group">
-            <label>Propietario</label>
-            <input name="propietario" value={formData.propietario} onChange={handleChange} placeholder="Nombre del propietario" />
-            {errors.propietario && <span className="error-message">{errors.propietario}</span>}
-          </div>
-          <div className="form-group">
-            <label><FaVenusMars /> Sexo *</label>
-            <select name="id_sexo" value={formData.id_sexo} onChange={handleChange}>
-              <option value="">Seleccione</option>
-              {sexos.map((s) => <option key={s.id_sexo} value={s.id_sexo}>{s.nombre}</option>)}
-            </select>
-            {errors.id_sexo && <span className="error-message">{errors.id_sexo}</span>}
           </div>
         </div>
 
@@ -440,27 +520,28 @@ export default function RegistrarAnimal() {
             {errors.fecha_nacimiento && <span className="error-message">{errors.fecha_nacimiento}</span>}
           </div>
           <div className="form-group">
-            <label>Edad (Años)</label>
+            <label>Edad (Años) <small style={{color: '#666', fontStyle: 'italic'}}>*Se calcula automáticamente</small></label>
             <input 
               type="number" 
               min="0" 
               name="edad_anos" 
               value={formData.edad_anos} 
-              onChange={handleChange} 
-              placeholder="Años"
+              readOnly
+              placeholder="Se calcula automáticamente"
+              style={{backgroundColor: '#f8f9fa', cursor: 'not-allowed'}}
             />
             {errors.edad_anos && <span className="error-message">{errors.edad_anos}</span>}
           </div>
           <div className="form-group">
-            <label>Edad (Meses)</label>
+            <label>Edad Total (Meses) <small style={{color: '#666', fontStyle: 'italic'}}>*Total de meses vividos</small></label>
             <input 
               type="number" 
               min="0" 
-              max="11" 
               name="edad_meses" 
               value={formData.edad_meses} 
-              onChange={handleChange} 
-              placeholder="0-11"
+              readOnly
+              placeholder="Total de meses vividos"
+              style={{backgroundColor: '#f8f9fa', cursor: 'not-allowed'}}
             />
             {errors.edad_meses && <span className="error-message">{errors.edad_meses}</span>}
           </div>
@@ -661,42 +742,57 @@ export default function RegistrarAnimal() {
           aria-labelledby="animal-modal-title"
         >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 id="animal-modal-title" style={{ margin: 0 }}>{selectedAnimal.nombre || 'Detalle de Animal'}</h3>
-              <button className="btn" onClick={() => setShowModal(false)} aria-label="Cerrar">✕</button>
+            <button className="modal-close" aria-label="Cerrar" onClick={() => setShowModal(false)}>✕</button>
+            <div className="modal-header">
+              <span className="chip">{selectedAnimal.identificador_unico || 'N/A'}</span>
+              <h4 id="animal-modal-title">{selectedAnimal.nombre || 'Detalle de Animal'}</h4>
+              <span className="muted">
+                {selectedAnimal.propietario || 'Sin propietario'}
+              </span>
             </div>
+
             <div className="modal-body">
               <hr className="modal-divider" />
-              <div className="modal-details">
-                <div className="detail"><span className="label">Identificador</span><span className="value">{selectedAnimal.identificador_unico || '-'}</span></div>
-                <div className="detail"><span className="label">Propietario</span><span className="value">{selectedAnimal.propietario || '-'}</span></div>
-                <div className="detail"><span className="label">Especie</span><span className="value">{especiesById.get(selectedAnimal.id_especie) || '-'}</span></div>
-                <div className="detail"><span className="label">Raza</span><span className="value">{razasById.get(selectedAnimal.id_raza) || '-'}</span></div>
+              <ul className="detail-list">
+                {/* Información Básica */}
+                <li className="detail-item"><span className="label">Identificador</span><span className="value">{selectedAnimal.identificador_unico || '-'}</span></li>
+                <li className="detail-item"><span className="label">Propietario</span><span className="value">{selectedAnimal.propietario || '-'}</span></li>
+                <li className="detail-item"><span className="label">Hacienda</span><span className="value">{haciendasById.get(String(selectedAnimal.id_hacienda)) || '-'}</span></li>
+                
+                {/* Información Biológica */}
+                <li className="detail-item"><span className="label">Especie</span><span className="value">{especiesById.get(selectedAnimal.id_especie) || '-'}</span></li>
+                <li className="detail-item"><span className="label">Raza</span><span className="value">{razasById.get(selectedAnimal.id_raza) || '-'}</span></li>
                 {selectedAnimal.es_mestizo && (
                   <>
-                    <div className="detail"><span className="label">Mestizo</span><span className="value">Sí</span></div>
-                    <div className="detail"><span className="label">Raza Padre</span><span className="value">{razasById.get(selectedAnimal.raza_padre) || '-'}</span></div>
-                    <div className="detail"><span className="label">Raza Madre</span><span className="value">{razasById.get(selectedAnimal.raza_madre) || '-'}</span></div>
+                    <li className="detail-item"><span className="label">Mestizo</span><span className="value">Sí</span></li>
+                    <li className="detail-item"><span className="label">Raza Padre</span><span className="value">{razasById.get(selectedAnimal.raza_padre) || '-'}</span></li>
+                    <li className="detail-item"><span className="label">Raza Madre</span><span className="value">{razasById.get(selectedAnimal.raza_madre) || '-'}</span></li>
                     {selectedAnimal.porcentaje_raza_principal && (
-                      <div className="detail"><span className="label">% Raza Principal</span><span className="value">{selectedAnimal.porcentaje_raza_principal}%</span></div>
+                      <li className="detail-item"><span className="label">% Raza Principal</span><span className="value">{selectedAnimal.porcentaje_raza_principal}%</span></li>
                     )}
                   </>
                 )}
-                <div className="detail"><span className="label">Sexo</span><span className="value">{sexosById.get(selectedAnimal.id_sexo) || '-'}</span></div>
-                <div className="detail"><span className="label">Peso</span><span className="value">{selectedAnimal.peso ?? '-'} kg</span></div>
+                <li className="detail-item"><span className="label">Sexo</span><span className="value">{sexosById.get(selectedAnimal.id_sexo) || '-'}</span></li>
+                
+                {/* Información Física */}
+                <li className="detail-item"><span className="label">Peso</span><span className="value">{selectedAnimal.peso ? `${selectedAnimal.peso} kg` : '-'}</span></li>
                 {(selectedAnimal.edad_anos !== null && selectedAnimal.edad_anos !== undefined) && (
-                  <div className="detail"><span className="label">Edad</span><span className="value">{selectedAnimal.edad_anos} años {selectedAnimal.edad_meses || 0} meses</span></div>
+                  <li className="detail-item"><span className="label">Edad</span><span className="value">{selectedAnimal.edad_anos} años {selectedAnimal.edad_meses || 0} meses</span></li>
                 )}
                 {selectedAnimal.fecha_nacimiento && (
-                  <div className="detail"><span className="label">Fecha Nacimiento</span><span className="value">{new Date(selectedAnimal.fecha_nacimiento).toLocaleDateString()}</span></div>
+                  <li className="detail-item"><span className="label">Fecha Nacimiento</span><span className="value">{new Date(selectedAnimal.fecha_nacimiento).toLocaleDateString()}</span></li>
                 )}
-                <div className="detail"><span className="label">Estado</span><span className="value">{estadosById.get(selectedAnimal.id_estado) || '-'}</span></div>
-                <div className="detail"><span className="label">Etapa</span><span className="value">{etapasById.get(selectedAnimal.id_etapa) || '-'}</span></div>
-                <div className="detail"><span className="label">Hacienda</span><span className="value">{haciendasById.get(String(selectedAnimal.id_hacienda)) || '-'}</span></div>
-                <div className="detail detail--full"><span className="label">Observaciones</span><span className="value">{selectedAnimal.observaciones || '-'}</span></div>
-              </div>
+                
+                {/* Estado y Etapa */}
+                <li className="detail-item"><span className="label">Estado</span><span className="value">{estadosById.get(selectedAnimal.id_estado) || '-'}</span></li>
+                <li className="detail-item"><span className="label">Etapa</span><span className="value">{etapasById.get(selectedAnimal.id_etapa) || '-'}</span></li>
+                
+                {/* Observaciones */}
+                <li className="detail-item detail-item--full"><span className="label">Observaciones</span><span className="value">{selectedAnimal.observaciones || '-'}</span></li>
+              </ul>
             </div>
-            <div className="modal-footer" style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'flex-end' }}>
+
+            <div className="modal-footer">
               <button className="btn btn-primary" onClick={() => setShowModal(false)}>Cerrar</button>
             </div>
           </div>

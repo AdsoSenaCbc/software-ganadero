@@ -8,8 +8,16 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(localStorage.getItem("token") || null);
   const [loading, setLoading] = useState(true);
 
-  const login = (role, email, accessToken, permisos = []) => {
-    setUser({ role, email, permisos });
+  const login = (role, email, accessToken, permisos = [], userData = {}) => {
+    const userInfo = { 
+      role, 
+      email, 
+      permisos,
+      nombre_rol: userData.nombre_rol || role,
+      activo: userData.activo !== undefined ? userData.activo : true,
+      ...userData
+    };
+    setUser(userInfo);
     setToken(accessToken);
     localStorage.setItem("token", accessToken);
   };
@@ -36,7 +44,14 @@ export function AuthProvider({ children }) {
           const role = decodedToken.rol;
           const email = decodedToken.email;
           const permisos = Array.isArray(decodedToken.permisos) ? decodedToken.permisos : [];
-          setUser({ role, email, permisos });
+          const nombre_rol = decodedToken.nombre_rol || role;
+          setUser({ 
+            role, 
+            email, 
+            permisos, 
+            nombre_rol,
+            activo: true // Asumimos activo si está logueado
+          });
           setToken(storedToken);
         } catch (error) {
           logout();

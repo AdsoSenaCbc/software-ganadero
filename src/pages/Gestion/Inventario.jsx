@@ -38,8 +38,6 @@ const Inventario = () => {
     cantidad: '',
     unidad: '',
     fecha_entrada: '',
-    fecha_caducidad: '',
-    ubicacion: '',
     id_ingrediente: ''
   });
   const [editId, setEditId] = useState(null);
@@ -75,12 +73,30 @@ const Inventario = () => {
         if (!respI.ok || !isJSON(respI)) throw new Error('Error cargando inventario');
         if (!respIng.ok || !isJSON(respIng)) throw new Error('Error cargando ingredientes');
         const [hList, invList, ingList] = await Promise.all([respH.json(), respI.json(), respIng.json()]);
+        
+        console.log('Haciendas cargadas:', hList);
+        console.log('Inventario cargado:', invList);
+        console.log('Ingredientes cargados:', ingList);
+        
         setHaciendas(Array.isArray(hList) ? hList : []);
         setInventario(Array.isArray(invList) ? invList : []);
         setIngredientesList(Array.isArray(ingList) ? ingList : []);
       } catch (e) {
         console.error('Error cargando datos de inventario:', e);
-        Swal.fire({ title: 'Error', text: 'No fue posible cargar datos de inventario.', icon: 'error' });
+        let errorMessage = 'No fue posible cargar datos de inventario.';
+        if (e.message.includes('haciendas')) {
+          errorMessage = 'Error cargando haciendas. Verifica que existan haciendas registradas.';
+        } else if (e.message.includes('inventario')) {
+          errorMessage = 'Error cargando inventario. Verifica la conexión con el servidor.';
+        } else if (e.message.includes('ingredientes')) {
+          errorMessage = 'Error cargando ingredientes. Verifica que existan ingredientes registrados.';
+        }
+        Swal.fire({ 
+          title: 'Error de Carga', 
+          text: errorMessage,
+          icon: 'error',
+          footer: 'Revisa la consola del navegador para más detalles.'
+        });
       }
     };
     loadAll();
@@ -106,7 +122,6 @@ const Inventario = () => {
       newErrors.cantidad = 'La cantidad debe ser un número positivo';
     if (!formData.unidad.trim()) newErrors.unidad = 'La unidad es requerida';
     if (!formData.fecha_entrada) newErrors.fecha_entrada = 'La fecha de entrada es requerida';
-    if (!formData.ubicacion.trim()) newErrors.ubicacion = 'La ubicación es requerida';
     if (formData.categoria === 'Alimentos' && !formData.id_ingrediente) {
       // opcional pero recomendado
       // newErrors.id_ingrediente = 'Seleccione el ingrediente relacionado (opcional)';
@@ -135,8 +150,6 @@ const Inventario = () => {
       cantidad: parseInt(formData.cantidad),
       unidad: formData.unidad,
       fecha_entrada: formData.fecha_entrada,
-      fecha_caducidad: formData.fecha_caducidad || null,
-      ubicacion: formData.ubicacion,
       id_ingrediente: formData.id_ingrediente ? parseInt(formData.id_ingrediente) : null,
     };
     try {
@@ -165,8 +178,6 @@ const Inventario = () => {
       cantidad: '',
       unidad: '',
       fecha_entrada: '',
-      fecha_caducidad: '',
-      ubicacion: '',
       id_ingrediente: ''
     });
     setErrors({});
@@ -181,8 +192,6 @@ const Inventario = () => {
       cantidad: item.cantidad?.toString() || '',
       unidad: item.unidad || '',
       fecha_entrada: item.fecha_entrada || '',
-      fecha_caducidad: item.fecha_caducidad || '',
-      ubicacion: item.ubicacion || '',
       id_ingrediente: item.id_ingrediente ? String(item.id_ingrediente) : ''
     });
     setEditId(item.id_inventario);
@@ -240,10 +249,10 @@ const Inventario = () => {
         if (c.id_ingrediente === iid) byNutriente[c.id_nutriente] = c.valor;
       });
       const rowsHtml = (Array.isArray(nuts) ? nuts : [])
-        .sort((a,b)=> String(a.abreviatura||a.nombre||'').localeCompare(String(b.abreviatura||b.nombre||'')))
+        .sort((a,b)=> String(a.nombre||'').localeCompare(String(b.nombre||'')))
         .map((n) => {
           const key = n.id_nutriente;
-          const label = `${n.abreviatura || n.nombre}${n.unidad ? ` (${n.unidad})` : ''}`;
+          const label = `${n.nombre}${n.unidad ? ` (${n.unidad})` : ''}`;
           const val = byNutriente[key] != null ? Number(byNutriente[key]).toFixed(2) : '-';
           return `<tr><th style="text-align:left;">${label}</th><td style="text-align:right;">${val}</td></tr>`;
         })
@@ -266,7 +275,7 @@ const Inventario = () => {
   const handleExport = () => {
     try {
       // Mapea hacienda_id a nombre si está disponible
-      const haciendaMap = new Map(haciendas.map(h => [String(h.id_hacienda ?? h.id), h.nombre ?? h.hacienda ?? `ID ${h.id_hacienda ?? h.id}`]));
+      const haciendaMap = new Map(haciendas.map(h => [String(h.id_hacienda), h.nombre ?? `ID ${h.id_hacienda}`]));
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'A4' });
       const title = 'Inventario';
@@ -278,11 +287,10 @@ const Inventario = () => {
         { header: 'Hacienda', dataKey: 'hacienda' },
         { header: 'Producto', dataKey: 'producto' },
         { header: 'Categoría', dataKey: 'categoria' },
+        { header: 'Ingrediente BD', dataKey: 'ingrediente_bd' },
         { header: 'Cantidad', dataKey: 'cantidad' },
         { header: 'Unidad', dataKey: 'unidad' },
         { header: 'F. Entrada', dataKey: 'fecha_entrada' },
-        { header: 'F. Caducidad', dataKey: 'fecha_caducidad' },
-        { header: 'Ubicación', dataKey: 'ubicacion' },
       ];
 
       const rows = (inventario || []).map(it => ({
@@ -290,11 +298,12 @@ const Inventario = () => {
         hacienda: haciendaMap.get(String(it.hacienda_id)) || (it.hacienda_id ?? ''),
         producto: it.producto || '',
         categoria: it.categoria || '',
+        ingrediente_bd: it.id_ingrediente ? 
+          (ingredientesList.find(ing => ing.id_ingrediente === it.id_ingrediente)?.nombre || `ID: ${it.id_ingrediente}`) 
+          : 'N/A',
         cantidad: it.cantidad ?? '',
         unidad: it.unidad || '',
         fecha_entrada: it.fecha_entrada || '',
-        fecha_caducidad: it.fecha_caducidad || '',
-        ubicacion: it.ubicacion || '',
       }));
 
       autoTable(doc, {
@@ -311,10 +320,10 @@ const Inventario = () => {
         // Asignar anchos pequeños fijos a columnas estrechas; las demás harán wrap automáticamente
         columnStyles: {
           0: { cellWidth: 40 },  // ID
-          4: { cellWidth: 55 },  // Cantidad
-          5: { cellWidth: 60 },  // Unidad
-          6: { cellWidth: 80 },  // F. Entrada
-          7: { cellWidth: 80 },  // F. Caducidad
+          4: { cellWidth: 90 },  // Ingrediente BD
+          5: { cellWidth: 60 },  // Cantidad
+          6: { cellWidth: 60 },  // Unidad
+          7: { cellWidth: 90 },  // F. Entrada
         },
         didDrawPage: (data) => {
           // Footer con fecha y número de página
@@ -367,7 +376,7 @@ const Inventario = () => {
             >
               <option value="">Seleccione una hacienda</option>
               {haciendas.map((hacienda) => (
-                <option key={hacienda.id} value={hacienda.id}>
+                <option key={hacienda.id_hacienda} value={hacienda.id_hacienda}>
                   {hacienda.nombre}
                 </option>
               ))}
@@ -402,12 +411,20 @@ const Inventario = () => {
           </div>
           {formData.categoria === 'Alimentos' && (
             <div className="form-group">
-              <label><FaUtensils /> Ingrediente (BD)</label>
+              <label><FaUtensils /> Ingrediente (BD) - {ingredientesList.length} disponibles</label>
               <select name="id_ingrediente" value={formData.id_ingrediente} onChange={handleChange}>
                 <option value="">Sin vincular</option>
-                {ingredientesList.map((ing) => (
+                {ingredientesList
+                  .sort((a, b) => {
+                    // Ordenar por tipo primero, luego por nombre
+                    const tipoA = (a.tipo || '').toLowerCase();
+                    const tipoB = (b.tipo || '').toLowerCase();
+                    if (tipoA !== tipoB) return tipoA.localeCompare(tipoB);
+                    return (a.nombre || '').localeCompare(b.nombre || '');
+                  })
+                  .map((ing) => (
                   <option key={ing.id_ingrediente} value={ing.id_ingrediente}>
-                    {ing.nombre} {ing.tipo ? `- ${ing.tipo}` : ''}
+                    {ing.nombre} {ing.tipo ? `(${ing.tipo.charAt(0).toUpperCase() + ing.tipo.slice(1)})` : ''}
                   </option>
                 ))}
               </select>
@@ -455,29 +472,6 @@ const Inventario = () => {
             {errors.fecha_entrada && <span className="error-message">{errors.fecha_entrada}</span>}
           </div>
         </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label><FaCalendarAlt /> Fecha Caducidad</label>
-            <input
-              type="date"
-              name="fecha_caducidad"
-              value={formData.fecha_caducidad}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="form-group">
-            <label><FaMapMarkerAlt /> Ubicación *</label>
-            <input
-              type="text"
-              name="ubicacion"
-              value={formData.ubicacion}
-              onChange={handleChange}
-              className={errors.ubicacion ? 'error' : ''}
-            />
-            {errors.ubicacion && <span className="error-message">{errors.ubicacion}</span>}
-          </div>
-          <div className="form-group"></div> {/* Espacio vacío para alinear */}
-        </div>
         <div className="form-actions">
           <button className="btn btn-primary" onClick={handleAddOrUpdate}>
             {editId !== null ? 'Actualizar' : 'Agregar'}
@@ -514,11 +508,10 @@ const Inventario = () => {
                 <th>Hacienda</th>
                 <th>Producto</th>
                 <th>Categoría</th>
+                <th>Ingrediente BD</th>
                 <th>Cantidad</th>
                 <th>Unidad</th>
                 <th>Fecha Entrada</th>
-                <th>Fecha Caducidad</th>
-                <th>Ubicación</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -527,16 +520,20 @@ const Inventario = () => {
                 const isLowStock = item.cantidad <= STOCK_THRESHOLD;
                 return (
                   <tr key={item.id_inventario} className={isLowStock ? 'low-stock' : ''}>
-                    <td>{haciendas.find((h) => h.id === item.hacienda_id)?.nombre || 'N/A'}</td>
+                    <td>{haciendas.find((h) => h.id_hacienda === item.hacienda_id)?.nombre || 'N/A'}</td>
                     <td>{item.producto}</td>
                     <td>{item.categoria}</td>
+                    <td>
+                      {item.id_ingrediente ? 
+                        ingredientesList.find(ing => ing.id_ingrediente === item.id_ingrediente)?.nombre || `ID: ${item.id_ingrediente}` 
+                        : 'N/A'
+                      }
+                    </td>
                     <td>
                       {item.cantidad} {isLowStock && <span className="low-stock-label">(Bajo stock)</span>}
                     </td>
                     <td>{item.unidad}</td>
                     <td>{item.fecha_entrada}</td>
-                    <td>{item.fecha_caducidad || 'N/A'}</td>
-                    <td>{item.ubicacion}</td>
                     <td>
                       <ActionButtons
                         item={item}

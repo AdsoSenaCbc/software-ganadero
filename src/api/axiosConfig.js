@@ -76,4 +76,8 @@ export const API_ROUTES = {
   ETAPAS: `${baseURL}/etapas-productivas/list`,
   MUNICIPIOS: `${baseURL}/municipios/list`,
   USERS: `${baseURL}/users/list`,
+  // Endpoints de administración
+  ADMIN_USERS: `${baseURL}/users/admin/users`,
+  ADMIN_ROLES: `${baseURL}/users/admin/roles`,
+  ADMIN_STATS: `${baseURL}/users/admin/stats`,
 };

@@ -12,6 +12,31 @@
 .detail-item .label { color: #516072; font-weight: 600; }
 .detail-item .value { color: #0f2237; font-weight: 500; word-break: break-word; }
 .detail-item--full { grid-template-columns: 140px 1fr; }
+
+/* Estilos para destacar el área - DESHABILITADO para consistencia visual */
+/*
+.area-value {
+    font-weight: 600 !important;
+    color: #1976d2 !important;
+    background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid #2196f3;
+}
+*/
+
+/* Mejorar el subtítulo de la card */
+.card-subtitle {
+    display: flex;
+    align-items: center;
+    color: #666 !important;
+    font-weight: 500;
+    margin-top: 0.25rem;
+}
+
+.card-subtitle .icon {
+    color: #2196f3;
+}
 .hacienda-container {
     max-width: 1200px;
     margin: 0 auto;

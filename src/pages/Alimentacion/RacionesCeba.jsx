@@ -1,589 +1,1721 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
 import './RacionesCeba.css';
-import { FaCow } from 'react-icons/fa6';
+import { 
+  FaWeight, 
+  FaChartLine, 
+  FaClock, 
+  FaCalculator, 
+  FaRocket, 
+  FaCalendarAlt, 
+  FaChartBar, 
+  FaTable
+} from 'react-icons/fa';
+import { GiCow, GiBull } from 'react-icons/gi';
 import { apiUrl, authHeader } from '../../api/api';
+import { usePermissions } from '../../hooks/usePermissions';
+import PermissionGuard from '../../components/PermissionGuard';
 
-/**
- * RacionesCeba
- * Pantalla para calcular y mostrar los requerimientos nutricionales
- * de la etapa de ceba (engorde) de bovinos. Se conecta al endpoint
- * Flask `/api/raciones/api/calcular` enviando peso y ganancia diaria de peso (GDP).
- */
 const RacionesCeba = () => {
-  const resultsRef = useRef(null);
-  const [formData, setFormData] = useState({
-    id_animal: '',
-    id_requerimiento: '',
-    calculado_por: '',
-    gdp: '',
-  });
-  // listas para selects
-  const [animales, setAnimales] = useState([]);
-  const [requerimientos, setRequerimientos] = useState([]);
-  const [usuarios, setUsuarios] = useState([]);
-  const [ingredientesDisp, setIngredientesDisp] = useState([]);
-  const [ingredientesSel, setIngredientesSel] = useState([]); // ids seleccionados
-  const [ingredientSearch, setIngredientSearch] = useState('');
-
-  const [results, setResults] = useState(null);
+  // Hook de permisos
+  const { permissions, loading: permissionsLoading } = usePermissions();
+  
+  // Estados principales
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [guardar, setGuardar] = useState(false);
-  const [saveMsg, setSaveMsg] = useState('');
-  const [compactView, setCompactView] = useState(false);
-  const [showZeroIngredients, setShowZeroIngredients] = useState(false);
-
-  // Formateador numérico seguro
-  const fmt = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? '-' : Number(v).toFixed(d);
-  const eps = 1e-6;
-
-  const handleExportPDF = async () => {
-    const node = resultsRef.current;
-    if (!node) return;
-    // Si no hay resultados, continuará exportando el área visible (como antes)
-    // para mantener el comportamiento previo funcional.
-    // Labels para encabezado
-    const animal = animales.find(a => String(a.id) === String(formData.id_animal));
-    const req = requerimientos.find(r => String(r.id_requerimiento || r.id) === String(formData.id_requerimiento));
-    const user = usuarios.find(u => String(u.id) === String(formData.calculado_por));
-    const animalLabel = animal ? (animal.nombre || animal.id_animal || `Animal ${animal.id}`) : '-';
-    const reqLabel = fmtReqLabel(req);
-    const userLabel = fmtUserLabel(user);
-    const fecha = new Date().toLocaleString();
-    // Estilos para impresión en nueva ventana
-    const styles = `
-      @page { size: A4; margin: 14mm; }
-      * { box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; }
-      h1 { color: #00324C; margin: 0 0 4px 0; }
-      h2, h3 { color: #0b2533; margin: 10px 0 6px 0; }
-      .meta { width: 100%; border-collapse: collapse; margin: 8px 0 14px 0; }
-      .meta th { text-align: left; color: #4b5563; font-weight: 600; padding: 4px 6px; }
-      table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 8px; }
-      thead th { background: #eef2f7; text-align: left; padding: 8px 10px; border-top: 1px solid #dbe2ea; border-bottom: 1px solid #dbe2ea; }
-      td { padding: 6px 10px; border-bottom: 1px solid #eef2f7; }
-      tr:nth-child(odd) td { background: #fafcff; }
-      .comp-controls, .toggle, button, .nav-link { display: none !important; }
-      .section { page-break-after: avoid; }
-    `;
-    const header = `
-      <h1>Ración Ceba</h1>
-      <table class="meta">
-        <tr><th>Animal</th><td>${animalLabel}</td><th>Requerimiento</th><td>${reqLabel}</td></tr>
-        <tr><th>Calculado por</th><td>${userLabel}</td><th>Fecha</th><td>${fecha}</td></tr>
-      </table>
-    `;
-    const content = `<div class="section">${node.innerHTML}</div>`;
-    const win = window.open('', '_blank');
-    if (!win) return;
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>Ración Ceba</title><style>${styles}</style></head><body>`);
-    win.document.write(header);
-    win.document.write(content);
-    win.document.write('</body></html>');
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 300);
-  };
-
-  // Helpers para etiquetas en selects (mostrar info principal tal como viene de la BD)
-  const fmtReqLabel = (r) => {
-    if (!r) return '';
-    if (r.descripcion) return r.descripcion;
-    const parts = [];
-    if (r.etapa || r.id_etapa) parts.push(`Etapa ${r.etapa ?? r.id_etapa}`);
-    if (r.peso_min != null || r.peso_max != null) parts.push(`Peso ${r.peso_min ?? '?'}–${r.peso_max ?? '?'} kg`);
-    const em = r.EM ?? r.em ?? r.energia_metabolizable;
-    const pc = r.PC ?? r.pc ?? r.proteina_cruda ?? r.proteina_total;
-    const ms = r.MS ?? r.ms ?? r.materia_seca;
-    if (em != null) parts.push(`EM ${em}`);
-    if (pc != null) parts.push(`PC ${pc} g`);
-    if (ms != null) parts.push(`MS ${ms} kg`);
-    return parts.join(' · ') || `Req ${r.id_requerimiento}`;
-  };
-
-  const fmtUserLabel = (u) => {
-    if (!u) return '';
-    const nombre = u.nombre || u.nombres || u.first_name || '';
-    const apellido = u.apellido || u.apellidos || u.last_name || '';
-    const full = [nombre, apellido].filter(Boolean).join(' ').trim();
-    return full || u.username || u.email || `Usuario ${u.id}`;
-  };
-
-  useEffect(() => {
-    AOS.init({ duration: 800 });
-    // cargar selects
-    const fetchSelects = async () => {
-      try {
-        const headers = authHeader();
-        const [aRes, rRes, uRes, iRes] = await Promise.all([
-          fetch(apiUrl('/api/animals/'), { headers }),
-          fetch(apiUrl('/api/requerimientos-nutricionales/api'), { headers }),
-          fetch(apiUrl('/api/users/api'), { headers }),
-          fetch(apiUrl('/api/ingredientes/api'), { headers }),
-        ]);
-        const toJsonIfOk = async (res) => {
-          const ct = res.headers.get('content-type') || '';
-          return ct.includes('application/json') ? res.json() : [];
-        };
-        if (aRes.ok) setAnimales(await toJsonIfOk(aRes));
-        if (rRes.ok) setRequerimientos(await toJsonIfOk(rRes));
-        if (uRes.ok) setUsuarios(await toJsonIfOk(uRes));
-        if (iRes.ok) setIngredientesDisp(await toJsonIfOk(iRes));
-      } catch (e) {
-        console.error('Error cargando selects', e);
-      }
-    };
-    fetchSelects();
-  }, []);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const fetchRequerimientos = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Validaciones previas
-      if (!formData.id_animal) {
-        setLoading(false);
-        setError('Seleccione un animal de ceba.');
-        return;
-      }
-      if (!ingredientesSel || ingredientesSel.length === 0) {
-        setLoading(false);
-        setError('Seleccione al menos un ingrediente para optimizar.');
-        return;
-      }
-      const headers = { 'Content-Type': 'application/json', ...authHeader() };
-      const resp = await fetch(apiUrl('/api/raciones/api/calcular'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          etapa: 'ceba',
-          id_animal: parseInt(formData.id_animal, 10) || null,
-          id_requerimiento: parseInt(formData.id_requerimiento, 10) || null,
-          calculado_por: parseInt(formData.calculado_por, 10) || null,
-          gdp: parseFloat(formData.gdp),
-          guardar,
-          ms_total: results?.racion_optima?.totales?.MS ?? undefined,
-          observaciones: '',
-          optimizar: true,
-          ingredientes_ids: (ingredientesSel && ingredientesSel.length > 0) ? ingredientesSel.map((v) => parseInt(v, 10)) : undefined,
-        }),
-      });
-      // Verificar que la respuesta sea JSON
-      const contentType = resp.headers.get('Content-Type') || '';
-      if (!contentType.includes('application/json')) {
-        const text = await resp.text();
-        throw new Error(`Respuesta no JSON. Status ${resp.status}. Primero 100 chars: ${text.slice(0, 100)}`);
-      }
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || 'Error del servidor');
-      setResults(data);
-      if (data.saved) {
-        setSaveMsg(`Cálculo guardado. ID ración: ${data.id_racion}`);
-        setTimeout(() => setSaveMsg(''), 4000);
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+  const [calculating, setCalculating] = useState(false);
+  const [apiError, setApiError] = useState(null);
+  
+  // Estados para datos del animal
+  const [animalesCeba, setAnimalesCeba] = useState([]);
+  const [animalSeleccionado, setAnimalSeleccionado] = useState(null);
+  const [animalData, setAnimalData] = useState({
+    peso_inicial: '',
+    peso_objetivo: '',
+    gdp_objetivo: '', // Ganancia Diaria de Peso objetivo
+    dias_ceba: '',
+    etapa_actual: 'iniciacion'
+  });
+  
+  // Estados para resultados
+  const [requerimientosCeba, setRequerimientosCeba] = useState(null);
+  const [proyeccionCeba, setProyeccionCeba] = useState(null);
+  const [etapasDesarrollo, setEtapasDesarrollo] = useState([]);
+  
+  
+  // Definición de etapas de desarrollo del novillo
+  const ETAPAS_CEBA = {
+    iniciacion: {
+      nombre: 'Iniciación',
+      peso_min: 250,
+      peso_max: 350,
+      gdp_promedio: 0.8,
+      descripcion: 'Etapa inicial de adaptación y crecimiento'
+    },
+    media_ceba: {
+      nombre: 'Media Ceba',
+      peso_min: 350,
+      peso_max: 450,
+      gdp_promedio: 1.0,
+      descripcion: 'Etapa de crecimiento acelerado'
+    },
+    finalizacion: {
+      nombre: 'Finalización',
+      peso_min: 450,
+      peso_max: 600,
+      gdp_promedio: 0.7,
+      descripcion: 'Etapa final de engorde y acabado'
     }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    fetchRequerimientos();
+  // Función para determinar etapa actual según peso
+  const determinarEtapaActual = (peso) => {
+    if (peso >= 250 && peso < 350) return 'iniciacion';
+    if (peso >= 350 && peso < 450) return 'media_ceba';
+    if (peso >= 450 && peso <= 600) return 'finalizacion';
+    return 'iniciacion'; // Por defecto
   };
+
+  // Cargar animales de ceba al montar el componente
+  useEffect(() => {
+    AOS.init({ duration: 800 });
+    cargarAnimalesCeba();
+  }, []);
+
+  const cargarAnimalesCeba = async () => {
+    try {
+      console.log('Cargando animales machos de ceba...');
+      const response = await fetch(apiUrl('/api/animals/ceba'), {
+        headers: authHeader()
+      });
+      
+      if (response.ok) {
+        const animalesCeba = await response.json();
+        setAnimalesCeba(animalesCeba);
+        console.log('Animales machos de ceba cargados:', animalesCeba.length);
+        
+        // Log detallado de los animales cargados
+        if (animalesCeba.length > 0) {
+          console.log('Primer animal de ejemplo:', animalesCeba[0]);
+        } else {
+          console.warn('No se encontraron animales machos de ceba en la base de datos');
+          setApiError('No hay animales machos registrados en etapa de ceba');
+        }
+      } else {
+        const errorData = await response.json();
+        console.error('Error del servidor:', errorData);
+        setApiError(errorData.error || 'Error al cargar la lista de animales de ceba');
+      }
+    } catch (error) {
+      console.error('Error de conexión:', error);
+      setApiError('Error de conexión al cargar animales de ceba');
+    }
+  };
+
+  // Manejar selección de animal
+  const handleAnimalChange = (e) => {
+    const animalId = e.target.value;
+    if (animalId) {
+      const animal = animalesCeba.find(a => a.id === parseInt(animalId));
+      setAnimalSeleccionado(animal);
+      
+      // Auto-completar datos si están disponibles
+      if (animal) {
+        const pesoActual = animal.peso || '';
+        const etapaActual = determinarEtapaActual(pesoActual);
+        
+        setAnimalData(prev => ({
+          ...prev,
+          peso_inicial: pesoActual,
+          etapa_actual: etapaActual
+        }));
+      }
+    } else {
+      setAnimalSeleccionado(null);
+      setAnimalData({
+        peso_inicial: '',
+        peso_objetivo: '',
+        gdp_objetivo: '',
+        dias_ceba: '',
+        etapa_actual: 'iniciacion'
+      });
+    }
+  };
+
+  // Manejar cambios en el formulario
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setAnimalData(prev => {
+      const newData = { ...prev, [name]: value };
+      
+      // Auto-determinar etapa si cambia el peso inicial
+      if (name === 'peso_inicial' && value) {
+        newData.etapa_actual = determinarEtapaActual(parseFloat(value));
+      }
+      
+      return newData;
+    });
+  };
+
+  // Función avanzada de cálculo de GDP
+  const calcularGDPAvanzado = () => {
+    const pesoInicial = parseFloat(animalData.peso_inicial);
+    const pesoObjetivo = parseFloat(animalData.peso_objetivo);
+    const diasCeba = parseInt(animalData.dias_ceba);
+    const gdpObjetivo = parseFloat(animalData.gdp_objetivo);
+    
+    const resultados = {
+      gdp_calculada: null,
+      dias_necesarios: null,
+      peso_proyectado: null,
+      eficiencia_ceba: null,
+      ganancia_total: null,
+      peso_por_dia: null,
+      meses_estimados: null,
+      factibilidad: null,
+      recomendaciones: []
+    };
+
+    // Cálculo de GDP si tenemos peso inicial, objetivo y días
+    if (pesoInicial && pesoObjetivo && diasCeba) {
+      resultados.gdp_calculada = (pesoObjetivo - pesoInicial) / diasCeba;
+      resultados.ganancia_total = pesoObjetivo - pesoInicial;
+      resultados.peso_por_dia = resultados.gdp_calculada;
+    }
+
+    // Cálculo de días necesarios si tenemos GDP objetivo
+    if (pesoInicial && pesoObjetivo && gdpObjetivo) {
+      resultados.dias_necesarios = Math.ceil((pesoObjetivo - pesoInicial) / gdpObjetivo);
+      resultados.meses_estimados = (resultados.dias_necesarios / 30).toFixed(1);
+      resultados.ganancia_total = pesoObjetivo - pesoInicial;
+    }
+
+    // Proyección de peso si tenemos GDP y días
+    if (pesoInicial && gdpObjetivo && diasCeba) {
+      resultados.peso_proyectado = pesoInicial + (gdpObjetivo * diasCeba);
+    }
+
+    // Evaluación de eficiencia de ceba
+    if (resultados.gdp_calculada) {
+      const etapaActual = animalData.etapa_actual;
+      const gdpPromedio = ETAPAS_CEBA[etapaActual]?.gdp_promedio || 0.8;
+      
+      resultados.eficiencia_ceba = (resultados.gdp_calculada / gdpPromedio) * 100;
+      
+      // Evaluación de factibilidad
+      if (resultados.gdp_calculada < 0.5) {
+        resultados.factibilidad = 'Baja';
+        resultados.recomendaciones.push('GDP muy baja, revisar alimentación');
+      } else if (resultados.gdp_calculada >= 0.5 && resultados.gdp_calculada <= 1.2) {
+        resultados.factibilidad = 'Óptima';
+        resultados.recomendaciones.push('GDP en rango óptimo para ceba');
+      } else if (resultados.gdp_calculada > 1.2 && resultados.gdp_calculada <= 1.8) {
+        resultados.factibilidad = 'Alta';
+        resultados.recomendaciones.push('GDP alta, excelente para ceba intensiva');
+      } else {
+        resultados.factibilidad = 'Muy Alta';
+        resultados.recomendaciones.push('GDP muy alta, verificar sostenibilidad');
+      }
+
+      // Recomendaciones por etapa
+      if (etapaActual === 'iniciacion' && resultados.gdp_calculada < 0.7) {
+        resultados.recomendaciones.push('Aumentar concentrado en etapa de iniciación');
+      } else if (etapaActual === 'media_ceba' && resultados.gdp_calculada < 0.9) {
+        resultados.recomendaciones.push('Optimizar ración para media ceba');
+      } else if (etapaActual === 'finalizacion' && resultados.gdp_calculada < 0.6) {
+        resultados.recomendaciones.push('Ajustar alimentación para finalización');
+      }
+
+      // Recomendaciones por peso
+      if (pesoInicial < 300 && resultados.gdp_calculada > 1.0) {
+        resultados.recomendaciones.push('GDP alta para peso bajo, monitorear salud');
+      } else if (pesoInicial > 500 && resultados.gdp_calculada < 0.7) {
+        resultados.recomendaciones.push('GDP baja para peso alto, revisar estrategia');
+      }
+    }
+
+    return resultados;
+  };
+
+  // Función para calcular costo por kg de ganancia
+  const calcularCostoPorKg = (costoAlimentacionDiario) => {
+    const resultados = calcularGDPAvanzado();
+    if (resultados.gdp_calculada && costoAlimentacionDiario) {
+      return (costoAlimentacionDiario / resultados.gdp_calculada).toFixed(2);
+    }
+    return null;
+  };
+
+  // Función para proyectar peso en fechas específicas
+  const proyectarPesoEnFecha = (diasFuturos) => {
+    const pesoInicial = parseFloat(animalData.peso_inicial);
+    const gdpObjetivo = parseFloat(animalData.gdp_objetivo);
+    
+    if (pesoInicial && gdpObjetivo && diasFuturos) {
+      return pesoInicial + (gdpObjetivo * diasFuturos);
+    }
+    return null;
+  };
+
+  // Función para calcular tiempo óptimo de ceba
+  const calcularTiempoOptimo = () => {
+    const pesoInicial = parseFloat(animalData.peso_inicial);
+    const etapaActual = animalData.etapa_actual;
+    
+    if (!pesoInicial || !etapaActual) return null;
+
+    const etapaInfo = ETAPAS_CEBA[etapaActual];
+    const pesoObjetivoEtapa = etapaInfo.peso_max;
+    const gdpPromedio = etapaInfo.gdp_promedio;
+    
+    const diasOptimos = Math.ceil((pesoObjetivoEtapa - pesoInicial) / gdpPromedio);
+    const mesesOptimos = (diasOptimos / 30).toFixed(1);
+    
+    return {
+      dias: diasOptimos,
+      meses: mesesOptimos,
+      peso_objetivo: pesoObjetivoEtapa,
+      gdp_recomendada: gdpPromedio
+    };
+  };
+
+  // ===== FASE 3: LÓGICA AVANZADA DE ETAPAS DE DESARROLLO =====
+
+  // Función para detectar transición automática de etapa
+  const detectarTransicionEtapa = (pesoActual) => {
+    const peso = parseFloat(pesoActual);
+    if (!peso) return null;
+
+    let etapaSugerida = null;
+    let razonTransicion = '';
+    let proximaEtapa = null;
+    let progreso = 0;
+
+    // Determinar etapa actual basada en peso
+    if (peso >= 250 && peso < 350) {
+      etapaSugerida = 'iniciacion';
+      proximaEtapa = 'media_ceba';
+      progreso = ((peso - 250) / (350 - 250)) * 100;
+      if (peso >= 330) {
+        razonTransicion = 'Animal próximo a Media Ceba (330+ kg)';
+      }
+    } else if (peso >= 350 && peso < 450) {
+      etapaSugerida = 'media_ceba';
+      proximaEtapa = 'finalizacion';
+      progreso = ((peso - 350) / (450 - 350)) * 100;
+      if (peso >= 430) {
+        razonTransicion = 'Animal próximo a Finalización (430+ kg)';
+      }
+    } else if (peso >= 450) {
+      etapaSugerida = 'finalizacion';
+      proximaEtapa = null;
+      progreso = Math.min(((peso - 450) / (550 - 450)) * 100, 100);
+      if (peso >= 520) {
+        razonTransicion = 'Animal listo para sacrificio (520+ kg)';
+      }
+    } else {
+      etapaSugerida = 'iniciacion';
+      razonTransicion = 'Peso muy bajo para ceba estándar';
+    }
+
+    return {
+      etapa_sugerida: etapaSugerida,
+      etapa_actual: animalData.etapa_actual,
+      requiere_cambio: etapaSugerida !== animalData.etapa_actual,
+      razon_transicion: razonTransicion,
+      proxima_etapa: proximaEtapa,
+      progreso_etapa: Math.round(progreso),
+      peso_actual: peso
+    };
+  };
+
+  // Función para calcular plan completo de desarrollo
+  const calcularPlanDesarrollo = () => {
+    const pesoInicial = parseFloat(animalData.peso_inicial);
+    const gdpObjetivo = parseFloat(animalData.gdp_objetivo) || 0.9;
+    
+    if (!pesoInicial) return null;
+
+    const plan = [];
+    let pesoActual = pesoInicial;
+    let diasAcumulados = 0;
+
+    // Recorrer todas las etapas desde la actual
+    const etapasOrden = ['iniciacion', 'media_ceba', 'finalizacion'];
+    const etapaInicialIndex = etapasOrden.indexOf(animalData.etapa_actual);
+    
+    for (let i = etapaInicialIndex; i < etapasOrden.length; i++) {
+      const etapaKey = etapasOrden[i];
+      const etapaInfo = ETAPAS_CEBA[etapaKey];
+      
+      // Calcular peso objetivo para esta etapa
+      const pesoObjetivo = Math.min(etapaInfo.peso_max, 
+        i === etapasOrden.length - 1 ? 550 : etapaInfo.peso_max);
+      
+      if (pesoActual >= pesoObjetivo) {
+        continue; // Ya superó esta etapa
+      }
+
+      // Calcular días necesarios para completar la etapa
+      const gananciaRequerida = pesoObjetivo - pesoActual;
+      const gdpEtapa = etapaInfo.gdp_promedio;
+      const diasEtapa = Math.ceil(gananciaRequerida / gdpEtapa);
+      
+      diasAcumulados += diasEtapa;
+
+      plan.push({
+        etapa: etapaKey,
+        nombre: etapaInfo.nombre,
+        peso_inicial: pesoActual,
+        peso_final: pesoObjetivo,
+        ganancia: gananciaRequerida,
+        dias_estimados: diasEtapa,
+        dias_acumulados: diasAcumulados,
+        meses_acumulados: (diasAcumulados / 30).toFixed(1),
+        gdp_recomendada: gdpEtapa,
+        descripcion: etapaInfo.descripcion
+      });
+
+      pesoActual = pesoObjetivo;
+    }
+
+    return plan;
+  };
+
+  // Función para optimizar transición entre etapas
+  const optimizarTransicion = (etapaActual, etapaSiguiente) => {
+    const etapaActualInfo = ETAPAS_CEBA[etapaActual];
+    const etapaSiguienteInfo = ETAPAS_CEBA[etapaSiguiente];
+    
+    if (!etapaActualInfo || !etapaSiguienteInfo) return null;
+
+    const recomendaciones = [];
+    const ajustes = [];
+
+    // Recomendaciones específicas por transición
+    if (etapaActual === 'iniciacion' && etapaSiguiente === 'media_ceba') {
+      recomendaciones.push('Aumentar gradualmente el concentrado');
+      recomendaciones.push('Reducir proporción de forraje');
+      recomendaciones.push('Monitorear adaptación digestiva');
+      ajustes.push({
+        parametro: 'Concentrado',
+        cambio: '+15%',
+        razon: 'Mayor demanda energética'
+      });
+      ajustes.push({
+        parametro: 'Proteína',
+        cambio: '+10%',
+        razon: 'Crecimiento muscular acelerado'
+      });
+    } else if (etapaActual === 'media_ceba' && etapaSiguiente === 'finalizacion') {
+      recomendaciones.push('Maximizar energía para engorde');
+      recomendaciones.push('Optimizar conversión alimenticia');
+      recomendaciones.push('Preparar para sacrificio');
+      ajustes.push({
+        parametro: 'Energía',
+        cambio: '+20%',
+        razon: 'Deposición de grasa intramuscular'
+      });
+      ajustes.push({
+        parametro: 'Fibra',
+        cambio: '-10%',
+        razon: 'Mayor digestibilidad'
+      });
+    }
+
+    return {
+      etapa_origen: etapaActual,
+      etapa_destino: etapaSiguiente,
+      recomendaciones,
+      ajustes,
+      periodo_transicion: '7-10 días',
+      monitoreo_requerido: true
+    };
+  };
+
+  // Función para evaluar rendimiento por etapa
+  const evaluarRendimientoEtapa = () => {
+    const resultadosGDP = calcularGDPAvanzado();
+    const etapaActual = animalData.etapa_actual;
+    const etapaInfo = ETAPAS_CEBA[etapaActual];
+    
+    if (!resultadosGDP.gdp_calculada || !etapaInfo) return null;
+
+    const gdpEsperada = etapaInfo.gdp_promedio;
+    const rendimiento = (resultadosGDP.gdp_calculada / gdpEsperada) * 100;
+    
+    let evaluacion = '';
+    let color = '';
+    let acciones = [];
+
+    if (rendimiento >= 110) {
+      evaluacion = 'Excelente';
+      color = '#059669';
+      acciones.push('Mantener estrategia actual');
+      acciones.push('Considerar adelantar transición');
+    } else if (rendimiento >= 90) {
+      evaluacion = 'Bueno';
+      color = '#0ea5e9';
+      acciones.push('Rendimiento satisfactorio');
+      acciones.push('Monitoreo rutinario');
+    } else if (rendimiento >= 70) {
+      evaluacion = 'Regular';
+      color = '#f59e0b';
+      acciones.push('Revisar alimentación');
+      acciones.push('Evaluar salud animal');
+    } else {
+      evaluacion = 'Deficiente';
+      color = '#dc2626';
+      acciones.push('Intervención inmediata');
+      acciones.push('Revisión veterinaria');
+    }
+
+    return {
+      etapa: etapaActual,
+      gdp_actual: resultadosGDP.gdp_calculada,
+      gdp_esperada: gdpEsperada,
+      rendimiento_porcentaje: rendimiento.toFixed(1),
+      evaluacion,
+      color,
+      acciones,
+      dias_en_etapa: parseInt(animalData.dias_ceba) || 0
+    };
+  };
+
+  // Función para generar cronograma de desarrollo
+  const generarCronogramaDesarrollo = () => {
+    const plan = calcularPlanDesarrollo();
+    if (!plan) return null;
+
+    const cronograma = [];
+    let fechaInicio = new Date();
+
+    plan.forEach((etapa, index) => {
+      const fechaFin = new Date(fechaInicio);
+      fechaFin.setDate(fechaFin.getDate() + etapa.dias_estimados);
+
+      cronograma.push({
+        ...etapa,
+        fecha_inicio: fechaInicio.toLocaleDateString(),
+        fecha_fin: fechaFin.toLocaleDateString(),
+        semana_inicio: Math.ceil((fechaInicio - new Date()) / (7 * 24 * 60 * 60 * 1000)),
+        hitos: [
+          `Peso inicial: ${etapa.peso_inicial} kg`,
+          `Peso objetivo: ${etapa.peso_final} kg`,
+          `GDP requerida: ${etapa.gdp_recomendada} kg/día`
+        ]
+      });
+
+      fechaInicio = new Date(fechaFin);
+    });
+
+    return cronograma;
+  };
+
+
+  // ===== FASE 5: TABLA COMPARATIVA DE ETAPAS CON PROYECCIONES =====
+
+  // Función para generar tabla comparativa completa de etapas
+  const generarTablaComparativaEtapas = () => {
+    if (!animalData.peso_inicial || !animalData.peso_objetivo) return null;
+
+    const pesoInicial = parseFloat(animalData.peso_inicial);
+    const pesoObjetivo = parseFloat(animalData.peso_objetivo);
+    const gdpObjetivo = parseFloat(animalData.gdp_objetivo) || 1.0;
+
+    // Determinar etapa actual
+    let etapaActual = 'iniciacion';
+    if (pesoInicial >= 350 && pesoInicial < 450) etapaActual = 'media_ceba';
+    else if (pesoInicial >= 450) etapaActual = 'finalizacion';
+
+    const etapasOrdenadas = ['iniciacion', 'media_ceba', 'finalizacion'];
+    const etapaActualIndex = etapasOrdenadas.indexOf(etapaActual);
+    
+    const tablaComparativa = [];
+    let pesoAcumulado = pesoInicial;
+    let diasAcumulados = 0;
+
+    etapasOrdenadas.forEach((etapaKey, index) => {
+      const etapa = ETAPAS_CEBA[etapaKey];
+      let pesoInicioEtapa = pesoAcumulado;
+      let pesoFinEtapa = Math.min(etapa.peso_max, pesoObjetivo);
+      
+      // Ajustar pesos según la situación
+      if (index < etapaActualIndex) {
+        // Etapas ya completadas (teóricamente)
+        pesoInicioEtapa = etapa.peso_min;
+        pesoFinEtapa = etapa.peso_max;
+      } else if (index === etapaActualIndex) {
+        // Etapa actual
+        pesoInicioEtapa = pesoInicial;
+        pesoFinEtapa = Math.min(etapa.peso_max, pesoObjetivo);
+      } else {
+        // Etapas futuras
+        pesoInicioEtapa = pesoAcumulado;
+        pesoFinEtapa = Math.min(etapa.peso_max, pesoObjetivo);
+      }
+
+      const gananciaEtapa = Math.max(0, pesoFinEtapa - pesoInicioEtapa);
+      const gdpEtapa = index === etapaActualIndex ? gdpObjetivo : etapa.gdp_promedio;
+      const diasEtapa = gananciaEtapa > 0 ? Math.ceil(gananciaEtapa / gdpEtapa) : 0;
+      
+      // Calcular eficiencia
+      const eficienciaEtapa = (gdpEtapa / etapa.gdp_promedio) * 100;
+      
+      // Estado de la etapa
+      let estadoEtapa = 'pendiente';
+      if (index < etapaActualIndex) estadoEtapa = 'completada';
+      else if (index === etapaActualIndex) estadoEtapa = 'actual';
+      
+      // Fechas proyectadas
+      const fechaInicio = new Date();
+      fechaInicio.setDate(fechaInicio.getDate() + diasAcumulados);
+      const fechaFin = new Date(fechaInicio);
+      fechaFin.setDate(fechaFin.getDate() + diasEtapa);
+
+      tablaComparativa.push({
+        etapa: etapa.nombre,
+        etapa_key: etapaKey,
+        peso_inicio: pesoInicioEtapa,
+        peso_fin: pesoFinEtapa,
+        ganancia_kg: gananciaEtapa,
+        gdp_requerida: gdpEtapa,
+        gdp_promedio: etapa.gdp_promedio,
+        dias_etapa: diasEtapa,
+        dias_acumulados: diasAcumulados + diasEtapa,
+        eficiencia: eficienciaEtapa,
+        estado: estadoEtapa,
+        fecha_inicio: fechaInicio,
+        fecha_fin: fechaFin,
+        porcentaje_completado: index <= etapaActualIndex ? 
+          (index < etapaActualIndex ? 100 : 
+            ((pesoInicial - etapa.peso_min) / (etapa.peso_max - etapa.peso_min)) * 100) : 0
+      });
+
+      pesoAcumulado = pesoFinEtapa;
+      diasAcumulados += diasEtapa;
+
+      // Si ya alcanzamos el peso objetivo, no continuar
+      if (pesoFinEtapa >= pesoObjetivo) return;
+    });
+
+    return {
+      etapas: tablaComparativa,
+      resumen: {
+        peso_inicial: pesoInicial,
+        peso_objetivo: pesoObjetivo,
+        ganancia_total: pesoObjetivo - pesoInicial,
+        dias_totales: diasAcumulados,
+        meses_totales: (diasAcumulados / 30).toFixed(1),
+        gdp_promedio_general: (pesoObjetivo - pesoInicial) / diasAcumulados,
+        etapa_actual: etapaActual,
+        etapas_completadas: tablaComparativa.filter(e => e.estado === 'completada').length,
+        etapas_pendientes: tablaComparativa.filter(e => e.estado === 'pendiente').length
+      }
+    };
+  };
+
+  // Función para generar proyecciones por escenarios
+  const generarProyeccionesEscenarios = () => {
+    if (!animalData.peso_inicial || !animalData.peso_objetivo) return null;
+
+    const pesoInicial = parseFloat(animalData.peso_inicial);
+    const pesoObjetivo = parseFloat(animalData.peso_objetivo);
+    const gananciaTotal = pesoObjetivo - pesoInicial;
+
+    const escenarios = [
+      {
+        nombre: 'Conservador',
+        descripcion: 'GDP 20% menor al promedio',
+        factor_gdp: 0.8,
+        color: '#f59e0b',
+        icon: '🐌'
+      },
+      {
+        nombre: 'Realista',
+        descripcion: 'GDP según promedio de etapa',
+        factor_gdp: 1.0,
+        color: '#059669',
+        icon: '🎯'
+      },
+      {
+        nombre: 'Optimista',
+        descripcion: 'GDP 20% mayor al promedio',
+        factor_gdp: 1.2,
+        color: '#0ea5e9',
+        icon: '🚀'
+      },
+      {
+        nombre: 'Intensivo',
+        descripcion: 'GDP 40% mayor al promedio',
+        factor_gdp: 1.4,
+        color: '#8b5cf6',
+        icon: '⚡'
+      }
+    ];
+
+    const proyecciones = escenarios.map(escenario => {
+      let diasTotales = 0;
+      let pesoAcumulado = pesoInicial;
+
+      const etapasProyectadas = [];
+
+      Object.keys(ETAPAS_CEBA).forEach(etapaKey => {
+        const etapa = ETAPAS_CEBA[etapaKey];
+        
+        if (pesoAcumulado >= pesoObjetivo) return;
+
+        const pesoInicioEtapa = pesoAcumulado;
+        const pesoFinEtapa = Math.min(etapa.peso_max, pesoObjetivo);
+        const gananciaEtapa = Math.max(0, pesoFinEtapa - pesoInicioEtapa);
+        
+        if (gananciaEtapa > 0) {
+          const gdpEtapa = etapa.gdp_promedio * escenario.factor_gdp;
+          const diasEtapa = Math.ceil(gananciaEtapa / gdpEtapa);
+
+          etapasProyectadas.push({
+            etapa: etapa.nombre,
+            dias: diasEtapa,
+            gdp: gdpEtapa,
+            ganancia: gananciaEtapa
+          });
+
+          diasTotales += diasEtapa;
+          pesoAcumulado = pesoFinEtapa;
+        }
+      });
+
+      return {
+        ...escenario,
+        dias_totales: diasTotales,
+        meses_totales: (diasTotales / 30).toFixed(1),
+        gdp_promedio: gananciaTotal / diasTotales,
+        eficiencia_tiempo: (365 / diasTotales) * 100, // Ciclos por año
+        etapas: etapasProyectadas,
+        fecha_finalizacion: new Date(Date.now() + diasTotales * 24 * 60 * 60 * 1000)
+      };
+    });
+
+    return {
+      escenarios: proyecciones,
+      comparacion: {
+        diferencia_tiempo_max: Math.max(...proyecciones.map(p => p.dias_totales)) - 
+                              Math.min(...proyecciones.map(p => p.dias_totales)),
+        mejor_eficiencia: proyecciones.reduce((prev, curr) => 
+          prev.eficiencia_tiempo > curr.eficiencia_tiempo ? prev : curr),
+        menor_tiempo: proyecciones.reduce((prev, curr) => 
+          prev.dias_totales < curr.dias_totales ? prev : curr)
+      }
+    };
+  };
+
 
   return (
     <div className="raciones-ceba-container">
-      <h1 className="raciones-title">Raciones – Ceba</h1>
+      {/* Header */}
+      <div className="raciones-header" data-aos="fade-down">
+        <h1 className="raciones-title">
+          <GiCow className="title-icon" />
+          Raciones de Ceba - Optimización de Engorde
+        </h1>
+        <p className="raciones-subtitle">
+          Calcula y optimiza la ganancia de peso diario para maximizar la eficiencia del proceso de ceba
+        </p>
+      </div>
 
-      {/* FORMULARIO */}
+      {/* Sección 1: Selección y Datos del Animal */}
       <section className="raciones-form" data-aos="fade-up">
-        <h2>Datos del Animal</h2>
-        <form onSubmit={handleSubmit}>
-          {/* Identificadores y guardado */}
-          <fieldset className="raciones-step" data-aos="fade-right">
-            <legend>Identificadores y guardado</legend>
-            <div className="grid-3">
-              <div className="form-group">
-                <label>Animal</label>
-                <select name="id_animal" value={formData.id_animal} onChange={handleChange}>
-                  <option value="">Seleccione…</option>
-                  {animales
-                    .filter((a) => {
-                      if (a && a.id_etapa != null) return Number(a.id_etapa) === 2;
-                      if (a && a.etapa_nombre) return String(a.etapa_nombre).toLowerCase() === 'ceba';
-                      if (a && a.categoria) return String(a.categoria).toLowerCase().includes('ceba');
-                      return true;
-                    })
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.nombre ?? a.id}
-                      </option>
-                    ))}
-                </select>
-                {animales.length === 0 && (<p className="muted">No hay animales disponibles.</p>)}
-              </div>
-              <div className="form-group">
-                <label>Requerimiento</label>
-                <select name="id_requerimiento" value={formData.id_requerimiento} onChange={handleChange}>
-                  <option value="">Seleccione…</option>
-                  {requerimientos
-                    .filter((r) => Number(r.id_etapa) === 2)
-                    .map((r) => (
-                    <option key={r.id_requerimiento} value={r.id_requerimiento}>
-                      {fmtReqLabel(r)}
-                    </option>
-                  ))}
-                </select>
-                {requerimientos.length === 0 && (<p className="muted">No hay requerimientos cargados.</p>)}
-              </div>
-              <div className="form-group">
-                <label>Calculado por (Usuario)</label>
-                <select name="calculado_por" value={formData.calculado_por} onChange={handleChange}>
-                  <option value="">Seleccione…</option>
-                  {usuarios.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {fmtUserLabel(u)}
-                    </option>
-                  ))}
-                </select>
-                {usuarios.length === 0 && (<p className="muted">No hay usuarios disponibles.</p>)}
-              </div>
-            </div>
-            <label className="toggle" style={{ marginTop: '0.5rem' }}>
-              <input type="checkbox" checked={guardar} onChange={(e) => setGuardar(e.target.checked)} /> Guardar cálculo en la base de datos
-            </label>
-          </fieldset>
+        <div className="form-header">
+          <h2>
+            <FaWeight className="section-icon" />
+            Datos del Animal de Ceba
+          </h2>
+          <p className="form-description">
+            Selecciona el animal y define los parámetros de engorde
+          </p>
+        </div>
+
+        <div className="form-grid">
+          {/* Selección de Animal */}
+          <div className="form-group full-width">
+            <label htmlFor="animal-select">Animal de Ceba</label>
+            <select
+              id="animal-select"
+              value={animalSeleccionado?.id || ''}
+              onChange={handleAnimalChange}
+              className="form-control"
+            >
+              <option value="">Seleccionar animal macho de ceba...</option>
+              {animalesCeba.map(animal => (
+                <option key={animal.id} value={animal.id}>
+                  {animal.nombre || animal.identificador_unico || `Animal ${animal.id_animal}`}
+                  {animal.peso && ` - ${animal.peso} kg`}
+                  {animal.raza && ` (${animal.raza})`}
+                  {animal.edad_anos && ` - ${animal.edad_anos} años`}
+                  {animal.propietario && ` - ${animal.propietario}`}
+                </option>
+              ))}
+            </select>
+            {animalesCeba.length === 0 && (
+              <small className="form-help text-muted">
+                No hay animales machos registrados en etapa de ceba
+              </small>
+            )}
+            {animalesCeba.length > 0 && (
+              <small className="form-help" style={{color: '#059669'}}>
+                ✅ {animalesCeba.length} animales machos de ceba disponibles
+              </small>
+            )}
+          </div>
+
+          {/* Peso Inicial */}
           <div className="form-group">
-            <label>Ganancia Diaria de Peso – GDP (kg/día)</label>
+            <label htmlFor="peso-inicial">Peso Inicial (kg)</label>
             <input
               type="number"
-              name="gdp"
-              step="0.01"
-              value={formData.gdp}
-              onChange={handleChange}
-              required
+              id="peso-inicial"
+              name="peso_inicial"
+              value={animalData.peso_inicial}
+              onChange={handleInputChange}
+              className="form-control"
+              placeholder="Ej: 300"
+              step="0.1"
+              min="200"
+              max="800"
             />
           </div>
 
-          {/* Ingredientes disponibles */}
-          <fieldset className="raciones-step" data-aos="fade-right" style={{ marginTop: '1rem' }}>
-            <legend>Ingredientes disponibles</legend>
-            <div className="form-actions" style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <button type="button" className="secondary-btn" onClick={() => setIngredientesSel(ingredientesDisp.map(i => i.id_ingrediente))} disabled={ingredientesDisp.length === 0}>
-                Seleccionar todos
-              </button>
-              <button type="button" className="secondary-btn" onClick={() => setIngredientesSel([])} disabled={ingredientesSel.length === 0}>
-                Limpiar selección
-              </button>
-              <input
-                type="text"
-                placeholder="Buscar ingrediente..."
-                value={ingredientSearch}
-                onChange={(e) => setIngredientSearch(e.target.value)}
-                style={{ flex: '1 1 240px', minWidth: 200, padding: '0.45rem 0.6rem', border: '1px solid #e5e7eb', borderRadius: 6 }}
-              />
-            </div>
-            {ingredientesDisp.length === 0 ? (
-              <p className="muted">No hay ingredientes en el catálogo.</p>
-            ) : (
-              <div className="ingredientes-grid">
-                {(ingredientesDisp.filter((ing) => {
-                  const q = ingredientSearch.trim().toLowerCase();
-                  if (!q) return true;
-                  return (
-                    String(ing.id_ingrediente).includes(q) ||
-                    (ing.nombre || '').toLowerCase().includes(q)
-                  );
-                })).map((ing) => (
-                  <label key={ing.id_ingrediente} className={`check-item ${ingredientesSel.includes(ing.id_ingrediente) ? 'checked' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={ingredientesSel.includes(ing.id_ingrediente)}
-                      onChange={() => setIngredientesSel((prev) => prev.includes(ing.id_ingrediente) ? prev.filter(x => x !== ing.id_ingrediente) : [...prev, ing.id_ingrediente])}
-                    />
-                    <span>
-                      {ing.nombre} <span className="muted">(ID {ing.id_ingrediente})</span>
-                      {ing.costo_kg != null && (
-                        <span className="pill" style={{ marginLeft: 8 }}>Costo ${Number(ing.costo_kg).toFixed(2)}/kg</span>
-                      )}
+          {/* Peso Objetivo */}
+          <div className="form-group">
+            <label htmlFor="peso-objetivo">Peso Objetivo (kg)</label>
+            <input
+              type="number"
+              id="peso-objetivo"
+              name="peso_objetivo"
+              value={animalData.peso_objetivo}
+              onChange={handleInputChange}
+              className="form-control"
+              placeholder="Ej: 500"
+              step="0.1"
+              min="300"
+              max="700"
+            />
+          </div>
+
+          {/* GDP Objetivo */}
+          <div className="form-group">
+            <label htmlFor="gdp-objetivo">GDP Objetivo (kg/día)</label>
+            <input
+              type="number"
+              id="gdp-objetivo"
+              name="gdp_objetivo"
+              value={animalData.gdp_objetivo}
+              onChange={handleInputChange}
+              className="form-control"
+              placeholder="Ej: 1.0"
+              step="0.01"
+              min="0.3"
+              max="2.0"
+            />
+          </div>
+
+          {/* Días de Ceba */}
+          <div className="form-group">
+            <label htmlFor="dias-ceba">Días de Ceba</label>
+            <input
+              type="number"
+              id="dias-ceba"
+              name="dias_ceba"
+              value={animalData.dias_ceba}
+              onChange={handleInputChange}
+              className="form-control"
+              placeholder="Ej: 200"
+              min="30"
+              max="1000"
+            />
+          </div>
+
+          {/* Etapa Actual */}
+          <div className="form-group">
+            <label htmlFor="etapa-actual">Etapa de Desarrollo</label>
+            <select
+              id="etapa-actual"
+              name="etapa_actual"
+              value={animalData.etapa_actual}
+              onChange={handleInputChange}
+              className="form-control"
+            >
+              {Object.entries(ETAPAS_CEBA).map(([key, etapa]) => (
+                <option key={key} value={key}>
+                  {etapa.nombre} ({etapa.peso_min}-{etapa.peso_max} kg)
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Información del Animal Seleccionado */}
+        {animalSeleccionado && (
+          <div className="animal-info" data-aos="fade-in">
+            <div className="info-card" style={{background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1px solid #22c55e'}}>
+              <h4 style={{display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#15803d', marginBottom: '1rem'}}>
+                <GiBull className="info-icon" />
+                Información del Animal Seleccionado
+              </h4>
+              
+              <div className="animal-details" style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '1rem'
+              }}>
+                <div className="detail-item">
+                  <span className="detail-label" style={{fontWeight: '500', color: '#374151'}}>Nombre:</span>
+                  <span className="detail-value" style={{fontWeight: '600', color: '#15803d'}}>
+                    {animalSeleccionado.nombre || animalSeleccionado.identificador_unico || `Animal ${animalSeleccionado.id_animal}`}
+                  </span>
+                </div>
+                
+                {animalSeleccionado.identificador_unico && (
+                  <div className="detail-item">
+                    <span className="detail-label" style={{fontWeight: '500', color: '#374151'}}>ID Único:</span>
+                    <span className="detail-value" style={{fontWeight: '600', color: '#15803d'}}>
+                      {animalSeleccionado.identificador_unico}
                     </span>
-                  </label>
-                ))}
-              </div>
-            )}
-            <p className="muted" style={{ marginTop: '0.5rem' }}>
-              La optimización usará únicamente los ingredientes seleccionados. Seleccionados: {ingredientesSel.length}
-            </p>
-          </fieldset>
-
-          <button type="submit" className="submit-btn" disabled={loading || ingredientesSel.length === 0}>
-            {guardar ? 'Calcular y Guardar' : 'Calcular'}
-          </button>
-        </form>
-      </section>
-
-      {/* ESTADOS */}
-      {loading && <p>Cargando resultados…</p>}
-      {error && <p className="error">{error}</p>}
-      {saveMsg && <p className="success">{saveMsg}</p>}
-
-      {/* RESULTADOS */}
-      {results && !loading && !error && (
-        <section className="raciones-results" data-aos="fade-up" ref={resultsRef}>
-          <h2>Requerimientos Calculados</h2>
-          <article className="result-card">
-            <FaCow className="result-icon" />
-            <div>
-              <h3>Animal</h3>
-              <p>GDP: {formData.gdp || 0} kg/día</p>
-              <h3>Requerimientos</h3>
-              <div className="kv-table">
-                <div className="kv"><span>EM (Mcal)</span><span>{results.requerimientos?.EM ?? '-'}</span></div>
-                <div className="kv"><span>EN (Mcal)</span><span>{results.requerimientos?.EN ?? '-'}</span></div>
-                <div className="kv"><span>ED (Mcal)</span><span>{results.requerimientos?.ED ?? '-'}</span></div>
-                <div className="kv"><span>TND (kg)</span><span>{results.requerimientos?.TND ?? '-'}</span></div>
-                <div className="kv"><span>PC (g)</span><span>{results.requerimientos?.PC ?? '-'}</span></div>
-                <div className="kv"><span>PD (g)</span><span>{results.requerimientos?.PD ?? '-'}</span></div>
-                <div className="kv"><span>MS (kg)</span><span>{results.requerimientos?.MS ?? '-'}</span></div>
-              </div>
-            </div>
-          </article>
-          {results?.racion_optima && (
-            <>
-              <article className="result-card">
-                <div>
-                  <h3>Ración óptima {results.racion_optima?.objetivo === 'costo' ? '(min costo)' : '(min MS)'} (kg MS por ingrediente)</h3>
-                  {results.racion_optima?.status && (
-                    <p className={`pill ${results.racion_optima.status === 'Optimal' ? 'ok' : 'bad'}`}>
-                      {results.racion_optima.status}
-                    </p>
-                  )}
-                  {results.racion_optima?.message && (
-                    <p className="error" style={{ marginTop: 8 }}>{results.racion_optima.message}</p>
-                  )}
-                  <div className="kv-table">
-                    {(() => {
-                      const cons = results.racion_optima.ingredientes_considerados || [];
-                      const sol = results.racion_optima.solucion || [];
-                      const positive = sol.filter(it => Number(it.kg_ms) > 0).sort((a,b)=>Number(b.kg_ms)-Number(a.kg_ms));
-                      const zeroList = cons
-                        .map(c => c.id_ingrediente)
-                        .filter(id => !positive.some(p => p.id_ingrediente === id));
-                      return (
-                        <>
-                          <div className="kv">
-                            <span className="muted">Ingredientes considerados</span>
-                            <span>
-                              {cons.length} total · {positive.length} con aporte · {zeroList.length} sin aporte
-                            </span>
-                          </div>
-                          {/* Tabla: ingredientes con aporte */}
-                          <table style={{ width: '100%', marginTop: 6, borderCollapse: 'separate', borderSpacing: 0 }}>
-                            <colgroup>
-                              <col style={{ width: '60%' }} />
-                              <col style={{ width: '15%' }} />
-                              <col style={{ width: '12.5%' }} />
-                              <col style={{ width: '12.5%' }} />
-                            </colgroup>
-                            <thead>
-                              <tr>
-                                <th style={{ textAlign: 'left', padding: '6px 8px' }}>Ingrediente</th>
-                                <th style={{ textAlign: 'right', padding: '6px 8px' }}>kg MS</th>
-                                <th style={{ textAlign: 'right', padding: '6px 8px' }}>EM (Mcal)</th>
-                                <th style={{ textAlign: 'right', padding: '6px 8px' }}>PC (g)</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {positive.map((it, idx) => (
-                                <tr key={it.id_ingrediente} style={idx % 2 === 1 ? { background: '#f8fafc' } : {}}>
-                                  <td style={{ padding: '6px 8px' }} title={`EM ${fmt(it.em_aporte,2)} Mcal · PC ${fmt(it.pc_aporte_g,0)} g`}>{it.nombre}</td>
-                                  <td style={{ textAlign: 'right', padding: '6px 8px' }}>{fmt(it.kg_ms, 3)}</td>
-                                  <td style={{ textAlign: 'right', padding: '6px 8px' }}>{fmt(it.em_aporte, 2)}</td>
-                                  <td style={{ textAlign: 'right', padding: '6px 8px' }}>{fmt(it.pc_aporte_g, 0)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          {/* Toggle para mostrar los de 0 kg */}
-                          {zeroList.length > 0 && (
-                            <div style={{ marginTop: 8 }}>
-                              <button type="button" className="secondary-btn" onClick={() => setShowZeroIngredients(s => !s)}>
-                                {showZeroIngredients ? 'Ocultar' : 'Ver'} ingredientes sin aporte ({zeroList.length})
-                              </button>
-                              {showZeroIngredients && (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: 6 }}>
-                                  {zeroList.map((id) => (
-                                    <span key={id} className="pill" style={{ background: '#f8fafc', color: '#0f172a', borderColor: '#e5e7eb' }}>
-                                      ID {id}: 0.000 kg MS
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
                   </div>
-                  <div className="kv" style={{ marginTop: '6px' }}>
-                    <span>Total</span>
-                    <span>
-                      MS {fmt(results.racion_optima.totales?.MS, 3)} kg · EM {fmt(results.racion_optima.totales?.EM, 2)} Mcal · PC {fmt(results.racion_optima.totales?.PC ?? results.racion_optima.totales?.PT, 0)} g · EN {fmt(results.racion_optima.totales?.EN, 2)} Mcal · ED {fmt(results.racion_optima.totales?.ED, 2)} Mcal · TND {fmt(results.racion_optima.totales?.TND, 3)} kg
-                      <span className={`pill ${results.racion_optima.cumplimiento?.EM && results.racion_optima.cumplimiento?.PC && results.racion_optima.cumplimiento?.MS ? 'ok' : 'bad'}`} style={{ marginLeft: '0.5rem' }}>
-                        {results.racion_optima.cumplimiento?.EM && results.racion_optima.cumplimiento?.PC && results.racion_optima.cumplimiento?.MS ? 'Cumple' : 'No cumple'}
-                      </span>
+                )}
+                
+                <div className="detail-item">
+                  <span className="detail-label" style={{fontWeight: '500', color: '#374151'}}>Peso Actual:</span>
+                  <span className="detail-value" style={{fontWeight: '600', color: '#15803d'}}>
+                    {animalSeleccionado.peso ? `${animalSeleccionado.peso} kg` : 'No registrado'}
+                  </span>
+                </div>
+                
+                {animalSeleccionado.raza && (
+                  <div className="detail-item">
+                    <span className="detail-label" style={{fontWeight: '500', color: '#374151'}}>Raza:</span>
+                    <span className="detail-value" style={{fontWeight: '600', color: '#15803d'}}>
+                      {animalSeleccionado.raza}
                     </span>
+                  </div>
+                )}
+                
+                {animalSeleccionado.edad_anos && (
+                  <div className="detail-item">
+                    <span className="detail-label" style={{fontWeight: '500', color: '#374151'}}>Edad:</span>
+                    <span className="detail-value" style={{fontWeight: '600', color: '#15803d'}}>
+                      {animalSeleccionado.edad_anos} años
+                      {animalSeleccionado.edad_meses && ` y ${animalSeleccionado.edad_meses} meses`}
+                    </span>
+                  </div>
+                )}
+                
+                <div className="detail-item">
+                  <span className="detail-label" style={{fontWeight: '500', color: '#374151'}}>Sexo:</span>
+                  <span className="detail-value" style={{fontWeight: '600', color: '#15803d'}}>
+                    {animalSeleccionado.sexo || 'Macho'}
+                  </span>
+                </div>
+                
+                {animalSeleccionado.propietario && (
+                  <div className="detail-item">
+                    <span className="detail-label" style={{fontWeight: '500', color: '#374151'}}>Propietario:</span>
+                    <span className="detail-value" style={{fontWeight: '600', color: '#15803d'}}>
+                      {animalSeleccionado.propietario}
+                    </span>
+                  </div>
+                )}
+              </div>
+              
+              {animalSeleccionado.observaciones && (
+                <div style={{marginTop: '1rem', padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '6px'}}>
+                  <span className="detail-label" style={{fontWeight: '500', color: '#374151'}}>Observaciones:</span>
+                  <p style={{margin: '0.25rem 0 0 0', color: '#15803d', fontStyle: 'italic'}}>
+                    {animalSeleccionado.observaciones}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Información de la Etapa Actual */}
+        {animalData.etapa_actual && (
+          <div className="etapa-info" data-aos="fade-in">
+            <div className="info-card">
+              <h4>
+                <FaChartLine className="info-icon" />
+                {ETAPAS_CEBA[animalData.etapa_actual].nombre}
+              </h4>
+              <p>{ETAPAS_CEBA[animalData.etapa_actual].descripcion}</p>
+              <div className="etapa-stats">
+                <div className="stat">
+                  <span className="stat-label">Rango de Peso:</span>
+                  <span className="stat-value">
+                    {ETAPAS_CEBA[animalData.etapa_actual].peso_min} - {ETAPAS_CEBA[animalData.etapa_actual].peso_max} kg
+                  </span>
+                </div>
+                <div className="stat">
+                  <span className="stat-label">GDP Promedio:</span>
+                  <span className="stat-value">
+                    {ETAPAS_CEBA[animalData.etapa_actual].gdp_promedio} kg/día
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Resultados Avanzados de GDP */}
+        {animalData.peso_inicial && (animalData.peso_objetivo || animalData.gdp_objetivo) && (
+          <div className="resultados-gdp-avanzados" data-aos="fade-up">
+            <div className="results-header">
+              <h3>
+                <FaCalculator className="section-icon" />
+                Análisis Avanzado de GDP
+              </h3>
+              <p className="results-description">
+                Cálculos detallados de ganancia diaria de peso y proyecciones
+              </p>
+            </div>
+
+            {(() => {
+              const resultados = calcularGDPAvanzado();
+              const tiempoOptimo = calcularTiempoOptimo();
+              
+              // Validar que tenemos datos válidos
+              if (!resultados || !resultados.gdp_calculada) {
+                return (
+                  <div className="gdp-analysis-container">
+                    <div className="alert alert-info">
+                      <p>Complete los datos del animal para ver el análisis de GDP.</p>
+                    </div>
+                  </div>
+                );
+              }
+              
+              return (
+                <div className="gdp-analysis-container">
+                  {/* Métricas Principales */}
+                  <div className="metricas-principales">
+                    <div className="metrica-card gdp-principal">
+                      <div className="metrica-header">
+                        <div className="metrica-icon-container">
+                          <FaWeight className="metrica-icon" />
+                        </div>
+                        <div className="metrica-info">
+                          <h4 className="metrica-title">GDP Calculada</h4>
+                          <p className="metrica-subtitle">Ganancia Diaria de Peso</p>
+                        </div>
+                      </div>
+                      <div className="metrica-valor-principal">
+                        {(resultados.gdp_calculada || 0).toFixed(3)}
+                        <span className="metrica-unidad">kg/día</span>
+                      </div>
+                      <div className="metrica-detalles">
+                        <div className="detalle-item">
+                          <span className="detalle-label">Ganancia Total</span>
+                          <span className="detalle-valor">{(resultados.ganancia_total || 0).toFixed(1)} kg</span>
+                        </div>
+                        <div className="detalle-item">
+                          <span className="detalle-label">Eficiencia</span>
+                          <span className={`detalle-valor badge ${(resultados.eficiencia_ceba || 0) >= 100 ? 'success' : (resultados.eficiencia_ceba || 0) >= 80 ? 'warning' : 'danger'}`}>
+                            {(resultados.eficiencia_ceba || 0).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="detalle-item">
+                          <span className="detalle-label">Factibilidad</span>
+                          <span className={`detalle-valor badge factibilidad-${(resultados.factibilidad || 'baja').toLowerCase().replace(' ', '-')}`}>
+                            {resultados.factibilidad || 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="metrica-card tiempo-principal">
+                      <div className="metrica-header">
+                        <div className="metrica-icon-container">
+                          <FaClock className="metrica-icon" />
+                        </div>
+                        <div className="metrica-info">
+                          <h4 className="metrica-title">Tiempo Estimado</h4>
+                          <p className="metrica-subtitle">Duración del proceso</p>
+                        </div>
+                      </div>
+                      <div className="metrica-valor-principal">
+                        {resultados.dias_necesarios || 0}
+                        <span className="metrica-unidad">días</span>
+                      </div>
+                      <div className="metrica-conversion">
+                        <div className="conversion-item">
+                          <span className="conversion-valor">{resultados.meses_estimados || 0}</span>
+                          <span className="conversion-label">meses</span>
+                        </div>
+                        <div className="conversion-separator">•</div>
+                        <div className="conversion-item">
+                          <span className="conversion-valor">{Math.ceil((resultados.dias_necesarios || 0) / 7)}</span>
+                          <span className="conversion-label">semanas</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Métricas Secundarias */}
+                  <div className="metricas-secundarias">
+                    <div className="metrica-card-small peso-proyectado">
+                      <div className="metrica-header-small">
+                        <FaChartLine className="metrica-icon-small" />
+                        <h5>Peso Proyectado</h5>
+                      </div>
+                      <div className="metrica-valor-small">
+                        {(resultados.peso_proyectado || 0).toFixed(1)} kg
+                      </div>
+                      <div className="metrica-comparacion">
+                        <span className="comparacion-inicial">Inicial: {animalData.peso_inicial || 0} kg</span>
+                        <span className="comparacion-ganancia">
+                          +{((resultados.peso_proyectado || 0) - parseFloat(animalData.peso_inicial || 0)).toFixed(1)} kg
+                        </span>
+                      </div>
+                    </div>
+
+                    {tiempoOptimo && (
+                      <div className="metrica-card-small tiempo-optimo">
+                        <div className="metrica-header-small">
+                          <GiBull className="metrica-icon-small" />
+                          <h5>Tiempo Óptimo</h5>
+                        </div>
+                        <div className="metrica-valor-small">
+                          {tiempoOptimo.meses || 0} meses
+                        </div>
+                        <div className="metrica-detalles-small">
+                          <div className="detalle-small">
+                            <span>Días Óptimos: {tiempoOptimo.dias || 0}</span>
+                          </div>
+                          <div className="detalle-small">
+                            <span>GDP Rec: {tiempoOptimo.gdp_recomendada || 0} kg/día</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="metrica-card-small resumen-proceso">
+                      <div className="metrica-header-small">
+                        <FaCalculator className="metrica-icon-small" />
+                        <h5>Resumen del Proceso</h5>
+                      </div>
+                      <div className="resumen-items">
+                        <div className="resumen-item">
+                          <span className="resumen-label">Peso Objetivo:</span>
+                          <span className="resumen-valor">{animalData.peso_objetivo || tiempoOptimo?.peso_objetivo || 0} kg</span>
+                        </div>
+                        <div className="resumen-item">
+                          <span className="resumen-label">GDP Objetivo:</span>
+                          <span className="resumen-valor">{animalData.gdp_objetivo || (resultados.gdp_calculada || 0).toFixed(2)} kg/día</span>
+                        </div>
+                        <div className="resumen-item">
+                          <span className="resumen-label">Rendimiento:</span>
+                          <span className={`resumen-valor badge ${(resultados.eficiencia_ceba || 0) >= 100 ? 'success' : 'warning'}`}>
+                            {(resultados.eficiencia_ceba || 0) >= 100 ? 'Excelente' : (resultados.eficiencia_ceba || 0) >= 80 ? 'Bueno' : 'Regular'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </article>
+              );
+            })()}
 
-              {/* Comparativo Requerimientos vs Aportes */}
-              <article className="result-card">
-                <div>
-                  <div className="comp-controls" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <h3 style={{ margin: 0 }}>Requerimientos vs Aportes (mezcla óptima)</h3>
-                    <label className="toggle" style={{ fontSize: 14 }}>
-                      <input type="checkbox" checked={compactView} onChange={(e) => setCompactView(e.target.checked)} /> Vista compacta
-                    </label>
+            {/* Recomendaciones */}
+            {(() => {
+              const resultados = calcularGDPAvanzado();
+              if (resultados.recomendaciones.length > 0) {
+                return (
+                  <div className="recomendaciones-gdp" data-aos="fade-in">
+                    <h4 style={{display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#059669', marginBottom: '1rem'}}>
+                      <FaChartLine className="section-icon" />
+                      Recomendaciones Técnicas
+                    </h4>
+                    <div className="recomendaciones-list">
+                      {resultados.recomendaciones.map((recomendacion, index) => (
+                        <div key={index} className="recomendacion-item">
+                          <span className="recomendacion-bullet">💡</span>
+                          <span className="recomendacion-text">{recomendacion}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  {(() => {
-                    const r = results;
-                    const reqE = r.requerimientos || {};
-                    const tot = r.racion_optima?.totales || {};
-                    const meta = {
-                      EM: { tip: 'Energía metabolizable (Mcal/día).' },
-                      EN: { tip: 'Energía neta estimada (Mcal/día).' },
-                      ED: { tip: 'Energía digestible estimada (Mcal/día).' },
-                      TND:{ tip: 'Total de nutrientes digestibles (kg/día).' },
-                      PC: { tip: 'Proteína cruda o total (g/día).' },
-                      PD: { tip: 'Proteína digestible estimada (g/día).' },
-                      MS: { tip: 'Materia seca total (kg/día).' },
-                    };
-                    const rows = [
-                      { block:'Energía', key: 'EM', label: 'EM (Mcal)', req: reqE?.EM, ap: tot?.EM, d: 2 },
-                      { block:'Energía', key: 'EN', label: 'EN (Mcal)', req: reqE?.EN, ap: tot?.EN, d: 2 },
-                      { block:'Energía', key: 'ED', label: 'ED (Mcal)', req: reqE?.ED, ap: tot?.ED, d: 2 },
-                      { block:'Energía', key: 'TND', label: 'TND (kg)', req: reqE?.TND, ap: tot?.TND, d: 3 },
-                      { block:'Proteínas', key: 'PC', label: 'PC/PT (g)', req: reqE?.PC ?? reqE?.PT, ap: (tot?.PC ?? tot?.PT), d: 0 },
-                      { block:'Proteínas', key: 'PD', label: 'PD (g)', req: reqE?.PD, ap: tot?.PD, d: 0 },
-                      { block:'Proteínas', key: 'MS', label: 'MS (kg)', req: reqE?.MS, ap: tot?.MS, d: 3 },
-                    ];
-                    const blocks = ['Energía','Proteínas'];
-                    const okBlock = (b) => {
-                      const set = rows.filter(x=>x.block===b);
-                      const valids = set.filter(x=>x.req!=null && !isNaN(x.req) && x.ap!=null && !isNaN(x.ap));
-                      if (!valids.length) return null;
-                      const allOk = valids.every(x=> Number(x.ap)+eps >= Number(x.req));
-                      return allOk;
-                    };
-                    return (
-                      <div>
-                        {!compactView && (
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
-                            {blocks.map(b => (
-                              <div key={b} className="kv-table" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                                  <strong>{b}</strong>
-                                  {okBlock(b) !== null && (
-                                    <span className={`pill ${okBlock(b) ? 'ok' : 'bad'}`}>{okBlock(b) ? 'Cumple' : 'No cumple'}</span>
-                                  )}
-                                </div>
-                                {rows.filter(x=>x.block===b).map((x) => {
-                                  const ok = (x.ap!=null && x.req!=null && !isNaN(x.ap) && !isNaN(x.req)) ? (Number(x.ap)+eps >= Number(x.req)) : null;
-                                  return (
-                                    <div key={x.key} className="kv">
-                                      <span title={meta[x.key]?.tip}>{x.label}</span>
-                                      <span>
-                                        Req {fmt(x.req, x.d)} · Ap {fmt(x.ap, x.d)} {ok!==null && (
-                                          <span className={`pill ${ok ? 'ok' : 'bad'}`} style={{ marginLeft: 6 }}>{ok ? 'OK' : 'Bajo'}</span>
-                                        )}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ))}
+                );
+              }
+              return null;
+            })()}
+          </div>
+        )}
+
+        {/* Proyecciones de Peso */}
+        {animalData.peso_inicial && animalData.gdp_objetivo && (
+          <div className="proyecciones-peso" data-aos="fade-up">
+            <div className="proyecciones-header">
+              <h3>
+                <FaChartLine className="section-icon" />
+                Proyecciones de Peso
+              </h3>
+              <p className="proyecciones-description">
+                Estimación de peso en diferentes períodos de tiempo
+              </p>
+            </div>
+
+            <div className="proyecciones-grid">
+              {[30, 60, 90, 120, 180].map(dias => {
+                const pesoProyectado = proyectarPesoEnFecha(dias);
+                if (pesoProyectado) {
+                  return (
+                    <div key={dias} className="proyeccion-item">
+                      <div className="proyeccion-periodo">
+                        {dias} días
+                        <small>({(dias/30).toFixed(1)} meses)</small>
+                      </div>
+                      <div className="proyeccion-peso">
+                        {pesoProyectado.toFixed(1)} kg
+                      </div>
+                      <div className="proyeccion-ganancia">
+                        +{(pesoProyectado - parseFloat(animalData.peso_inicial)).toFixed(1)} kg
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* FASE 3: ANÁLISIS DE ETAPAS DE DESARROLLO */}
+        {animalData.peso_inicial && (
+          <div className="etapas-desarrollo-avanzado" data-aos="fade-up">
+            <div className="etapas-header">
+              <h3>
+                <FaRocket className="section-icon" />
+                Análisis de Etapas de Desarrollo
+              </h3>
+              <p className="etapas-description">
+                Gestión inteligente de transiciones y optimización por etapa
+              </p>
+            </div>
+
+            {/* Detección de Transición */}
+            {(() => {
+              const transicion = detectarTransicionEtapa(animalData.peso_inicial);
+              if (transicion) {
+                return (
+                  <div className="transicion-etapa" data-aos="fade-in">
+                    <div className="transicion-card" style={{
+                      background: transicion.requiere_cambio ? 
+                        'linear-gradient(135deg, #fef3c7, #fde68a)' : 
+                        'linear-gradient(135deg, #f0fdf4, #dcfce7)',
+                      border: `1px solid ${transicion.requiere_cambio ? '#f59e0b' : '#22c55e'}`
+                    }}>
+                      <div className="transicion-header">
+                        <h4 style={{
+                          color: transicion.requiere_cambio ? '#92400e' : '#15803d',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}>
+                          {transicion.requiere_cambio ? '⚠️' : '✅'} Estado de Etapa
+                        </h4>
+                      </div>
+
+                      <div className="transicion-info">
+                        <div className="info-grid">
+                          <div className="info-item">
+                            <span className="info-label">Etapa Actual:</span>
+                            <span className="info-value">
+                              {ETAPAS_CEBA[transicion.etapa_actual].nombre}
+                            </span>
                           </div>
-                        )}
-                        {compactView && (
-                          <div style={{ display: 'grid', gap: 10 }}>
-                            {['Energía','Proteínas'].map((b) => (
-                              <div key={b} className="kv-table" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                                  <strong>{b}</strong>
-                                  {okBlock(b) !== null && (
-                                    <span className={`pill ${okBlock(b) ? 'ok' : 'bad'}`}>{okBlock(b) ? 'Cumple' : 'No cumple'}</span>
-                                  )}
-                                </div>
-                                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
-                                  <colgroup>
-                                    <col style={{ width: '44%' }} />
-                                    <col style={{ width: '18%' }} />
-                                    <col style={{ width: '18%' }} />
-                                    <col style={{ width: '20%' }} />
-                                  </colgroup>
-                                  <thead>
-                                    <tr>
-                                      <th style={{ textAlign: 'left', padding: '8px 10px' }}>Indicador</th>
-                                      <th style={{ textAlign: 'right', padding: '8px 10px' }}>Req</th>
-                                      <th style={{ textAlign: 'right', padding: '8px 10px' }}>Ap</th>
-                                      <th style={{ textAlign: 'center', padding: '8px 10px' }}>Estado</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {rows.filter(r => r.block === b).map((x, idx) => {
-                                      const ok = (x.ap!=null && x.req!=null && !isNaN(x.ap) && !isNaN(x.req)) ? (Number(x.ap)+eps >= Number(x.req)) : null;
-                                      const zebra = idx % 2 === 1 ? { background: '#f8fafc' } : {};
-                                      return (
-                                        <tr key={x.key} style={zebra}>
-                                          <td style={{ padding: '6px 10px' }} title={meta[x.key]?.tip}>{x.label}</td>
-                                          <td style={{ textAlign: 'right', padding: '6px 10px' }}>{fmt(x.req, x.d)}</td>
-                                          <td style={{ textAlign: 'right', padding: '6px 10px' }}>{fmt(x.ap, x.d)}</td>
-                                          <td style={{ textAlign: 'center', padding: '6px 10px' }}>
-                                            {ok!==null ? (<span className={`pill ${ok ? 'ok' : 'bad'}`}>{ok ? 'OK' : 'Bajo'}</span>) : '-'}
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
+                          
+                          <div className="info-item">
+                            <span className="info-label">Etapa Sugerida:</span>
+                            <span className="info-value" style={{
+                              color: transicion.requiere_cambio ? '#dc2626' : '#059669'
+                            }}>
+                              {ETAPAS_CEBA[transicion.etapa_sugerida].nombre}
+                            </span>
+                          </div>
+
+                          <div className="info-item">
+                            <span className="info-label">Progreso:</span>
+                            <div className="progreso-container">
+                              <div className="progreso-bar">
+                                <div 
+                                  className="progreso-fill" 
+                                  style={{
+                                    width: `${transicion.progreso_etapa}%`,
+                                    background: transicion.progreso_etapa >= 80 ? '#f59e0b' : '#22c55e'
+                                  }}
+                                ></div>
                               </div>
-                            ))}
+                              <span className="progreso-text">{transicion.progreso_etapa}%</span>
+                            </div>
+                          </div>
+
+                          {transicion.proxima_etapa && (
+                            <div className="info-item">
+                              <span className="info-label">Próxima Etapa:</span>
+                              <span className="info-value">
+                                {ETAPAS_CEBA[transicion.proxima_etapa].nombre}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {transicion.razon_transicion && (
+                          <div className="transicion-alerta">
+                            <span className="alerta-icon">💡</span>
+                            <span className="alerta-texto">{transicion.razon_transicion}</span>
                           </div>
                         )}
                       </div>
-                    );
-                  })()}
-                </div>
-              </article>
-            </>
-          )}
-          <div className="comp-controls">
-            <button type="button" className="full-btn btn-blue" onClick={handleExportPDF}>
-              Exportar PDF
-            </button>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Plan de Desarrollo Completo */}
+            {(() => {
+              const plan = calcularPlanDesarrollo();
+              if (plan && plan.length > 0) {
+                return (
+                  <div className="plan-desarrollo" data-aos="fade-in">
+                    <h4 style={{display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#059669', marginBottom: '1rem'}}>
+                      <FaCalendarAlt className="section-icon" />
+                      Plan Completo de Desarrollo
+                    </h4>
+                    
+                    <div className="plan-grid">
+                      {plan.map((etapa, index) => (
+                        <div key={etapa.etapa} className="plan-etapa-card">
+                          <div className="plan-etapa-header">
+                            <h5>{etapa.nombre}</h5>
+                            <span className="etapa-numero">Etapa {index + 1}</span>
+                          </div>
+                          
+                          <div className="plan-etapa-content">
+                            <div className="plan-metric">
+                              <span className="metric-label">Peso:</span>
+                              <span className="metric-value">
+                                {etapa.peso_inicial} → {etapa.peso_final} kg
+                              </span>
+                            </div>
+                            
+                            <div className="plan-metric">
+                              <span className="metric-label">Ganancia:</span>
+                              <span className="metric-value">+{etapa.ganancia.toFixed(1)} kg</span>
+                            </div>
+                            
+                            <div className="plan-metric">
+                              <span className="metric-label">Duración:</span>
+                              <span className="metric-value">
+                                {etapa.dias_estimados} días ({etapa.meses_acumulados} meses acum.)
+                              </span>
+                            </div>
+                            
+                            <div className="plan-metric">
+                              <span className="metric-label">GDP Requerida:</span>
+                              <span className="metric-value">{etapa.gdp_recomendada} kg/día</span>
+                            </div>
+                            
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="plan-resumen">
+                      <div className="resumen-item">
+                        <span className="resumen-label">Tiempo Total:</span>
+                        <span className="resumen-value">
+                          {plan[plan.length - 1].dias_acumulados} días 
+                          ({plan[plan.length - 1].meses_acumulados} meses)
+                        </span>
+                      </div>
+                      <div className="resumen-item">
+                        <span className="resumen-label">Ganancia Total:</span>
+                        <span className="resumen-value">
+                          +{plan.reduce((acc, etapa) => acc + etapa.ganancia, 0).toFixed(1)} kg
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Evaluación de Rendimiento */}
+            {(() => {
+              const rendimiento = evaluarRendimientoEtapa();
+              if (rendimiento) {
+                return (
+                  <div className="rendimiento-etapa" data-aos="fade-in">
+                    <h4 style={{display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#059669', marginBottom: '1rem'}}>
+                      <FaChartBar className="section-icon" />
+                      Evaluación de Rendimiento Actual
+                    </h4>
+                    
+                    <div className="rendimiento-card">
+                      <div className="rendimiento-header">
+                        <div className="rendimiento-etapa-info">
+                          <h5>{ETAPAS_CEBA[rendimiento.etapa].nombre}</h5>
+                          <span className="dias-etapa">{rendimiento.dias_en_etapa} días en etapa</span>
+                        </div>
+                        <div className="rendimiento-evaluacion" style={{color: rendimiento.color}}>
+                          {rendimiento.evaluacion}
+                        </div>
+                      </div>
+                      
+                      <div className="rendimiento-metricas">
+                        <div className="metrica-item">
+                          <span className="metrica-label">GDP Actual:</span>
+                          <span className="metrica-valor">{rendimiento.gdp_actual.toFixed(3)} kg/día</span>
+                        </div>
+                        <div className="metrica-item">
+                          <span className="metrica-label">GDP Esperada:</span>
+                          <span className="metrica-valor">{rendimiento.gdp_esperada} kg/día</span>
+                        </div>
+                        <div className="metrica-item">
+                          <span className="metrica-label">Rendimiento:</span>
+                          <span className="metrica-valor" style={{color: rendimiento.color}}>
+                            {rendimiento.rendimiento_porcentaje}%
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="rendimiento-acciones">
+                        <h6>Acciones Recomendadas:</h6>
+                        <ul>
+                          {rendimiento.acciones.map((accion, index) => (
+                            <li key={index}>{accion}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
-        </section>
+        )}
+
+
+        {/* FASE 5: TABLA COMPARATIVA DE ETAPAS CON PROYECCIONES */}
+        {animalData.peso_inicial && animalData.peso_objetivo && (
+          <div className="tabla-comparativa-etapas" data-aos="fade-up">
+            <div className="comparativa-header">
+              <h3>
+                <FaTable className="section-icon" />
+                Tabla Comparativa de Etapas de Desarrollo
+              </h3>
+              <p className="comparativa-description">
+                Análisis detallado de cada etapa con proyecciones de tiempo y eficiencia
+              </p>
+            </div>
+
+            {/* Tabla principal de comparación */}
+            {(() => {
+              const tablaComparativa = generarTablaComparativaEtapas();
+              if (tablaComparativa) {
+                return (
+                  <div className="tabla-principal-comparativa" data-aos="fade-in">
+                    {/* Resumen ejecutivo */}
+                    <div className="resumen-ejecutivo">
+                      <h4 style={{display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#059669', marginBottom: '1rem'}}>
+                        <FaChartBar className="section-icon" />
+                        Resumen Ejecutivo del Plan
+                      </h4>
+                      
+                      <div className="resumen-grid">
+                        <div className="resumen-card">
+                          <div className="resumen-label">Ganancia Total</div>
+                          <div className="resumen-value">{tablaComparativa.resumen.ganancia_total.toFixed(1)} kg</div>
+                        </div>
+                        <div className="resumen-card">
+                          <div className="resumen-label">Tiempo Total</div>
+                          <div className="resumen-value">{tablaComparativa.resumen.meses_totales} meses</div>
+                        </div>
+                        <div className="resumen-card">
+                          <div className="resumen-label">GDP Promedio</div>
+                          <div className="resumen-value">{tablaComparativa.resumen.gdp_promedio_general.toFixed(2)} kg/día</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tabla detallada */}
+                    <div className="tabla-detallada-container">
+                      <table className="tabla-comparativa">
+                        <thead>
+                          <tr>
+                            <th>Etapa</th>
+                            <th>Estado</th>
+                            <th>Peso Inicial</th>
+                            <th>Peso Final</th>
+                            <th>Ganancia</th>
+                            <th>GDP Requerida</th>
+                            <th>Días</th>
+                            <th>Eficiencia</th>
+                            <th>Fecha Fin</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tablaComparativa.etapas.map((etapa, index) => (
+                            <tr key={index} className={`etapa-row etapa-${etapa.estado}`}>
+                              <td className="etapa-nombre">
+                                <div className="etapa-info">
+                                  <span className="nombre">{etapa.etapa}</span>
+                                  {etapa.estado === 'actual' && <span className="badge-actual">Actual</span>}
+                                </div>
+                              </td>
+                              <td className="etapa-estado">
+                                <span className={`estado-badge estado-${etapa.estado}`}>
+                                  {etapa.estado === 'completada' && '✅ Completada'}
+                                  {etapa.estado === 'actual' && '🔄 En Progreso'}
+                                  {etapa.estado === 'pendiente' && '⏳ Pendiente'}
+                                </span>
+                              </td>
+                              <td className="peso-inicial">{etapa.peso_inicio.toFixed(1)} kg</td>
+                              <td className="peso-final">{etapa.peso_fin.toFixed(1)} kg</td>
+                              <td className="ganancia">
+                                <span className="ganancia-valor">{etapa.ganancia_kg.toFixed(1)} kg</span>
+                              </td>
+                              <td className="gdp-requerida">
+                                <span className="gdp-valor">{etapa.gdp_requerida.toFixed(2)} kg/día</span>
+                                <small className="gdp-promedio">
+                                  (Prom: {etapa.gdp_promedio.toFixed(2)})
+                                </small>
+                              </td>
+                              <td className="dias-etapa">
+                                <span className="dias-valor">{etapa.dias_etapa} días</span>
+                                <small className="dias-acumulados">
+                                  (Total: {etapa.dias_acumulados})
+                                </small>
+                              </td>
+                              <td className="eficiencia-etapa">
+                                <span className={`eficiencia-valor ${etapa.eficiencia >= 100 ? 'alta' : etapa.eficiencia >= 80 ? 'media' : 'baja'}`}>
+                                  {etapa.eficiencia.toFixed(0)}%
+                                </span>
+                              </td>
+                              <td className="fecha-fin">
+                                {etapa.fecha_fin.toLocaleDateString('es-ES', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric'
+                                })}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Proyecciones por escenarios */}
+            {(() => {
+              const proyecciones = generarProyeccionesEscenarios();
+              if (proyecciones) {
+                return (
+                  <div className="proyecciones-escenarios" data-aos="fade-in">
+                    <h4 style={{display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#059669', marginBottom: '1rem'}}>
+                      <FaRocket className="section-icon" />
+                      Proyecciones por Escenarios
+                    </h4>
+                    
+                    <div className="escenarios-grid">
+                      {proyecciones.escenarios.map((escenario, index) => (
+                        <div key={index} className="escenario-card" style={{borderLeftColor: escenario.color}}>
+                          <div className="escenario-header">
+                            <div className="escenario-titulo">
+                              <span className="escenario-icon">{escenario.icon}</span>
+                              <span className="escenario-nombre">{escenario.nombre}</span>
+                            </div>
+                            <div className="escenario-descripcion">{escenario.descripcion}</div>
+                          </div>
+                          
+                          <div className="escenario-metricas">
+                            <div className="metrica-principal">
+                              <span className="metrica-label">Tiempo Total</span>
+                              <span className="metrica-valor" style={{color: escenario.color}}>
+                                {escenario.meses_totales} meses
+                              </span>
+                            </div>
+                            
+                            <div className="metricas-secundarias">
+                              <div className="metrica-item">
+                                <span className="metrica-label">GDP Promedio:</span>
+                                <span className="metrica-valor">{escenario.gdp_promedio.toFixed(2)} kg/día</span>
+                              </div>
+                              <div className="metrica-item">
+                                <span className="metrica-label">Eficiencia:</span>
+                                <span className="metrica-valor">{escenario.eficiencia_tiempo.toFixed(0)}%</span>
+                              </div>
+                              <div className="metrica-item">
+                                <span className="metrica-label">Finalización:</span>
+                                <span className="metrica-valor">
+                                  {escenario.fecha_finalizacion.toLocaleDateString('es-ES', {
+                                    month: 'short',
+                                    year: 'numeric'
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Comparación de escenarios */}
+                    <div className="comparacion-escenarios">
+                      <h5>📊 Análisis Comparativo</h5>
+                      <div className="comparacion-grid">
+                        <div className="comparacion-item">
+                          <span className="comparacion-label">Diferencia máxima de tiempo:</span>
+                          <span className="comparacion-valor">
+                            {Math.ceil(proyecciones.comparacion.diferencia_tiempo_max / 30)} meses
+                          </span>
+                        </div>
+                        <div className="comparacion-item">
+                          <span className="comparacion-label">Mejor eficiencia:</span>
+                          <span className="comparacion-valor">
+                            {proyecciones.comparacion.mejor_eficiencia.nombre} 
+                            ({proyecciones.comparacion.mejor_eficiencia.eficiencia_tiempo.toFixed(0)}%)
+                          </span>
+                        </div>
+                        <div className="comparacion-item">
+                          <span className="comparacion-label">Menor tiempo:</span>
+                          <span className="comparacion-valor">
+                            {proyecciones.comparacion.menor_tiempo.nombre} 
+                            ({proyecciones.comparacion.menor_tiempo.meses_totales} meses)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+          </div>
+        )}
+
+        {/* Cálculos Básicos */}
+        {animalData.peso_inicial && animalData.peso_objetivo && (
+          <div className="calculos-basicos" data-aos="fade-up">
+            <h3>
+              <FaClock className="section-icon" />
+              Cálculos Preliminares
+            </h3>
+            
+            <div className="calculos-grid">
+              {animalData.dias_ceba && (
+                <div className="calculo-card">
+                  <div className="calculo-label">GDP Calculada</div>
+                  <div className="calculo-valor">
+                    {(() => {
+                      const resultados = calcularGDPAvanzado();
+                      return resultados.gdp_calculada ? resultados.gdp_calculada.toFixed(3) : '0.000';
+                    })()} kg/día
+                  </div>
+                </div>
+              )}
+              
+              {animalData.gdp_objetivo && (
+                <div className="calculo-card">
+                  <div className="calculo-label">Días Necesarios</div>
+                  <div className="calculo-valor">
+                    {(() => {
+                      const resultados = calcularGDPAvanzado();
+                      return resultados.dias_necesarios || '0';
+                    })()} días
+                  </div>
+                </div>
+              )}
+              
+              <div className="calculo-card">
+                <div className="calculo-label">Ganancia Total</div>
+                <div className="calculo-valor">
+                  {(parseFloat(animalData.peso_objetivo) - parseFloat(animalData.peso_inicial)).toFixed(1)} kg
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Botones de Acción */}
+        <div className="form-actions">
+          <PermissionGuard 
+            module="raciones" 
+            action="create"
+            fallback={
+              <div className="apprentice-alert">
+                ℹ️ Los usuarios aprendices pueden ver los cálculos pero no crear nuevas raciones
+              </div>
+            }
+          >
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={!animalData.peso_inicial || !animalData.peso_objetivo || calculating}
+              onClick={() => console.log('Próxima fase: Cálculo de requerimientos')}
+            >
+              {calculating ? '🔄 Calculando...' : '📊 Calcular Requerimientos'}
+            </button>
+          </PermissionGuard>
+          
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              setAnimalSeleccionado(null);
+              setAnimalData({
+                peso_inicial: '',
+                peso_objetivo: '',
+                gdp_objetivo: '',
+                dias_ceba: '',
+                etapa_actual: 'iniciacion'
+              });
+              setRequerimientosCeba(null);
+              setProyeccionCeba(null);
+            }}
+          >
+            🧹 Limpiar
+          </button>
+        </div>
+      </section>
+
+      {/* Mensajes de Error */}
+      {apiError && (
+        <div className="error-message" data-aos="fade-in">
+          <span className="error-icon">⚠️</span>
+          {apiError}
+        </div>
       )}
 
-      {/* NAVEGACIÓN */}
-      <nav className="raciones-nav" data-aos="fade-up">
+      {/* Navegación */}
+      <div className="raciones-nav" data-aos="fade-up">
         <Link to="/alimentacion/racion" className="nav-link">
-          Volver a Raciones
+          <GiCow /> Volver a Raciones
         </Link>
         <Link to="/alimentacion/racion-lactancia" className="nav-link">
-          Raciones Lactancia
+          🥛 Raciones Lactancia
         </Link>
-      </nav>
+      </div>
     </div>
   );
 };

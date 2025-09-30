@@ -23,8 +23,6 @@ const ComposicionBronatologica = () => {
   const [loading, setLoading] = useState(true);
   // Filtros adicionales
   const [selectedNutrienteId, setSelectedNutrienteId] = useState('');
-  const [minValor, setMinValor] = useState('');
-  const [maxValor, setMaxValor] = useState('');
   const [selectedTipo, setSelectedTipo] = useState(''); // Forrajes | Concentrados | Sales minerales
 
   // Cargar ingredientes, nutrientes y características desde la API y pivotear
@@ -66,12 +64,12 @@ const ComposicionBronatologica = () => {
 
         const nutrientes = Array.isArray(nuts) ? nuts : [];
         const nutrientesSorted = [...nutrientes].sort((a, b) => {
-          const an = (a.abreviatura || a.nombre || '').toString();
-          const bn = (b.abreviatura || b.nombre || '').toString();
+          const an = (a.nombre || '').toString();
+          const bn = (b.nombre || '').toString();
           return an.localeCompare(bn);
         });
         setNutrientColumns(
-          nutrientesSorted.map(n => ({ id: n.id_nutriente, nombre: n.nombre, unidad: n.unidad, abreviatura: n.abreviatura }))
+          nutrientesSorted.map(n => ({ id: n.id_nutriente, nombre: n.nombre, unidad: n.unidad }))
         );
 
         const ingList = Array.isArray(ings) ? ings : [];
@@ -133,11 +131,9 @@ const ComposicionBronatologica = () => {
   };
 
   const handleConsultar = () => {
-    // Filtros combinados: nombre de ingrediente + nutriente (rango)
+    // Filtros combinados: nombre de ingrediente + tipo + nutriente
     const nameQuery = (formData.ingrediente || '').toLowerCase().trim();
     const nid = selectedNutrienteId ? Number(selectedNutrienteId) : null;
-    const minV = minValor !== '' ? Number(minValor) : null;
-    const maxV = maxValor !== '' ? Number(maxValor) : null;
     const tipoSel = (selectedTipo || '').trim();
 
     let filteredIngredientes = allIngredientes;
@@ -150,23 +146,19 @@ const ComposicionBronatologica = () => {
 
     if (tipoSel) {
       filteredIngredientes = filteredIngredientes.filter((row) => {
-        if (tipoSel === 'Concentrados') return !!row.is_concentrado;
-        if (tipoSel === 'Sales minerales') return !!row.is_sale_mineral;
-        if (tipoSel === 'Forrajes') return !row.is_concentrado && !row.is_sale_mineral;
+        const tipo = String(row.tipo || '').toLowerCase();
+        if (tipoSel === 'Concentrados') return tipo === 'concentrado';
+        if (tipoSel === 'Sales minerales') return tipo === 'mineral';
+        if (tipoSel === 'Forrajes') return tipo === 'forraje';
         // Fallback por texto si llegara otra etiqueta
-        return String(row.tipo || '').toLowerCase() === tipoSel.toLowerCase();
+        return tipo === tipoSel.toLowerCase();
       });
     }
 
     if (nid) {
       filteredIngredientes = filteredIngredientes.filter((row) => {
         const v = row.valores ? row.valores[nid] : undefined;
-        if (v == null) return false;
-        const num = Number(v);
-        if (!Number.isFinite(num)) return false;
-        if (minV != null && num < minV) return false;
-        if (maxV != null && num > maxV) return false;
-        return true;
+        return v != null && Number.isFinite(Number(v));
       });
     }
 
@@ -185,8 +177,6 @@ const ComposicionBronatologica = () => {
   const handleLimpiar = () => {
     setFormData((prev) => ({ ...prev, ingrediente: '' }));
     setSelectedNutrienteId('');
-    setMinValor('');
-    setMaxValor('');
     setSelectedTipo('');
     setIngredientes(allIngredientes);
   };
@@ -195,10 +185,31 @@ const ComposicionBronatologica = () => {
     <div className="composicion-container">
       <div className="composicion-header">
         <h2>Composición Bromatológica</h2>
+        <div className="data-summary">
+          <span className="summary-item">
+            <strong>{allIngredientes.length}</strong> ingredientes
+          </span>
+          <span className="summary-item">
+            <strong>{nutrientColumns.length}</strong> nutrientes
+          </span>
+          <span className="summary-item">
+            Mostrando: <strong>{ingredientes.length}</strong> resultados
+          </span>
+        </div>
       </div>
 
 
         <div className="filters">
+          <div className="filter-item">
+            <label>Buscar Ingrediente</label>
+            <input 
+              type="text" 
+              name="ingrediente"
+              value={formData.ingrediente} 
+              onChange={handleChange}
+              placeholder="Nombre del ingrediente..."
+            />
+          </div>
           <div className="filter-item">
             <label>Categoría</label>
             <select value={selectedTipo} onChange={(e) => setSelectedTipo(e.target.value)}>
@@ -213,17 +224,9 @@ const ComposicionBronatologica = () => {
             <select value={selectedNutrienteId} onChange={(e) => setSelectedNutrienteId(e.target.value)}>
               <option value="">Todos</option>
               {nutrientColumns.map((n) => (
-                <option key={n.id} value={n.id}>{(n.abreviatura || n.nombre)}{n.unidad ? ` (${n.unidad})` : ''}</option>
+                <option key={n.id} value={n.id}>{n.nombre}{n.unidad ? ` (${n.unidad})` : ''}</option>
               ))}
             </select>
-          </div>
-          <div className="filter-item">
-            <label>Mín</label>
-            <input type="number" value={minValor} onChange={(e) => setMinValor(e.target.value)} placeholder="0" />
-          </div>
-          <div className="filter-item">
-            <label>Máx</label>
-            <input type="number" value={maxValor} onChange={(e) => setMaxValor(e.target.value)} placeholder="100" />
           </div>
           <div className="actions">
             <button className="btn btn-primary" onClick={handleConsultar}>Aplicar</button>
@@ -242,7 +245,7 @@ const ComposicionBronatologica = () => {
                 <th>Ingrediente</th>
                 <th>Categoría</th>
                 {nutrientColumns.map((n) => (
-                  <th key={n.id}>{(n.abreviatura || n.nombre)}{n.unidad ? ` (${n.unidad})` : ''}</th>
+                  <th key={n.id}>{n.nombre}{n.unidad ? ` (${n.unidad})` : ''}</th>
                 ))}
               </tr>
             </thead>

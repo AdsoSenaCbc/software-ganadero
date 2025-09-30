@@ -12,6 +12,7 @@ import {
   FaMapMarkerAlt,
   FaAddressCard,
   FaPhone,
+  FaRulerCombined,
 } from 'react-icons/fa';
 import './RegistrarHacienda.css';
 
@@ -607,7 +608,10 @@ const RegistrarHacienda = () => {
                   <div className="card-header">
                     <span className="chip">{id}</span>
                     <h4 className="card-title">{h.nombre || 'Sin nombre'}</h4>
-                    <div className="card-subtitle">{usersById.get(h.id_usuario) || '-'}</div>
+                    <div className="card-subtitle" style={{color: 'white'}}>
+                      <FaAddressCard className="icon" style={{marginRight: '5px', color: 'white'}} />
+                      {h.propietario || 'Sin propietario'}
+                    </div>
                   </div>
                   <div className="card-body">
                     <div className="info-row">
@@ -621,13 +625,11 @@ const RegistrarHacienda = () => {
                       <span className="value">{h.ubicacion || '-'}</span>
                     </div>
                     <div className="info-row">
-                      <FaAddressCard className="icon" />
-                      <span className="label">Propietario</span>
-                      <span className="value">{h.propietario || '-'}</span>
-                    </div>
-                    <div className="info-row">
+                      <FaRulerCombined className="icon" />
                       <span className="label">Área (ha)</span>
-                      <span className="value">{h.area ?? '-'}</span>
+                      <span className="value">
+                        {h.area ?? '-'}
+                      </span>
                     </div>
                   </div>
                   <div className="card-actions">
@@ -682,22 +684,21 @@ const RegistrarHacienda = () => {
             <div className="modal-header">
               <span className="chip">{selectedHacienda.id_hacienda || selectedHacienda.id}</span>
               <h4 id="hacienda-modal-title">{selectedHacienda.nombre || 'Detalle de Hacienda'}</h4>
-              <span className="muted">{usersById.get(selectedHacienda.id_usuario) || '-'}</span>
+              <span className="muted">
+                <FaAddressCard className="icon" style={{marginRight: '5px'}} />
+                {selectedHacienda.propietario || 'Sin propietario'}
+              </span>
             </div>
 
             <div className="modal-body">
               <hr className="modal-divider" />
               <ul className="detail-list">
-                <li className="detail-item"><span className="label">Departamento</span><span className="value">{depsById.get(selectedHacienda.id_departamento) || '-'}</span></li>
-                <li className="detail-item"><span className="label">Municipio</span><span className="value">{munsById.get(selectedHacienda.id_municipio) || '-'}</span></li>
-                <li className="detail-item"><span className="label">Teléfono</span><span className="value">{selectedHacienda.tel_contacto || '-'}</span></li>
-                <li className="detail-item"><span className="label">Usuario</span><span className="value">{usersById.get(selectedHacienda.id_usuario) || '-'}</span></li>
-                <li className="detail-item"><span className="label">Ubicación</span><span className="value">{selectedHacienda.ubicacion || '-'}</span></li>
-                <li className="detail-item"><span className="label">Hacienda</span><span className="value">{selectedHacienda.nombre || '-'}</span></li>
                 <li className="detail-item"><span className="label">Propietario</span><span className="value">{selectedHacienda.propietario || '-'}</span></li>
+                <li className="detail-item"><span className="label">Teléfono</span><span className="value">{selectedHacienda.tel_contacto || '-'}</span></li>
+                <li className="detail-item"><span className="label">Ubicación</span><span className="value">{selectedHacienda.ubicacion || '-'}</span></li>
                 <li className="detail-item"><span className="label">Área (ha)</span><span className="value">{selectedHacienda.area ?? '-'}</span></li>
                 <li className="detail-item detail-item--full"><span className="label">Observaciones</span><span className="value">{selectedHacienda.observaciones || '-'}</span></li>
-                <li className="detail-item"><span className="label">Lat/Lon</span><span className="value">{(selectedHacienda.latitud != null && selectedHacienda.longitud != null) ? `${selectedHacienda.latitud}, ${selectedHacienda.longitud}` : '-'}</span></li>
+                <li className="detail-item"><span className="label">Coordenadas</span><span className="value">{(selectedHacienda.latitud != null && selectedHacienda.longitud != null) ? `${selectedHacienda.latitud}, ${selectedHacienda.longitud}` : '-'}</span></li>
               </ul>
             </div>
 

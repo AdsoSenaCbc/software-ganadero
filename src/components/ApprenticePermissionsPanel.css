@@ -1,0 +1,393 @@
+/* Estilos para el Panel de Permisos de Aprendices */
+
+.apprentice-permissions-panel {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.panel-header {
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.panel-header h2 {
+  color: #2c3e50;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.panel-header p {
+  font-size: 1.1rem;
+  margin-bottom: 0;
+}
+
+/* Lista de Aprendices */
+.apprentice-list {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.apprentice-item {
+  padding: 15px;
+  border-bottom: 1px solid #e9ecef;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background-color: #fff;
+}
+
+.apprentice-item:hover {
+  background-color: #f8f9fa;
+  border-left: 4px solid #007bff;
+}
+
+.apprentice-item.active {
+  background-color: #e3f2fd;
+  border-left: 4px solid #007bff;
+  box-shadow: inset 0 0 0 1px #007bff;
+}
+
+.apprentice-item:last-child {
+  border-bottom: none;
+}
+
+.apprentice-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.apprentice-name {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 1rem;
+}
+
+.apprentice-email {
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.apprentice-status {
+  margin-top: 5px;
+}
+
+.apprentice-status .badge {
+  font-size: 0.75rem;
+  padding: 4px 8px;
+}
+
+/* Sección de Permisos */
+.permissions-section {
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 20px;
+  background-color: #f8f9fa;
+}
+
+.permissions-section h6 {
+  color: #495057;
+  font-weight: 600;
+  margin-bottom: 15px;
+  border-bottom: 2px solid #dee2e6;
+  padding-bottom: 8px;
+}
+
+.permissions-modules {
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 20px;
+  background-color: #fff;
+}
+
+.permissions-modules h6 {
+  color: #495057;
+  font-weight: 600;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #dee2e6;
+  padding-bottom: 8px;
+}
+
+.module-permissions {
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  margin-bottom: 15px;
+}
+
+.module-permissions h6 {
+  margin-bottom: 15px;
+  font-weight: 600;
+  border-bottom: 1px solid #dee2e6;
+  padding-bottom: 8px;
+}
+
+.module-permissions:last-child {
+  margin-bottom: 0;
+}
+
+/* Switches de Permisos */
+.form-check-input:checked {
+  background-color: #28a745;
+  border-color: #28a745;
+}
+
+.form-check-input:focus {
+  border-color: #80bdff;
+  outline: 0;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.form-check-label {
+  font-weight: 500;
+  color: #495057;
+  cursor: pointer;
+  user-select: none;
+}
+
+.form-check-label i {
+  width: 16px;
+  text-align: center;
+}
+
+/* Botones de Acción */
+.btn-group .btn {
+  font-weight: 500;
+}
+
+.btn-group .btn i {
+  margin-right: 5px;
+}
+
+/* Plantillas Rápidas */
+.btn-group.flex-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn-group.flex-wrap .btn {
+  margin-bottom: 8px;
+}
+
+/* Estados de Carga */
+.spinner-border {
+  width: 2rem;
+  height: 2rem;
+}
+
+/* Alertas */
+.alert {
+  border-radius: 8px;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.alert-danger {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.alert i {
+  margin-right: 8px;
+}
+
+/* Información de Modificación */
+.bg-light {
+  background-color: #f8f9fa !important;
+}
+
+.bg-light small {
+  display: block;
+  line-height: 1.4;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .apprentice-permissions-panel {
+    padding: 10px;
+  }
+  
+  .panel-header h2 {
+    font-size: 1.5rem;
+  }
+  
+  .panel-header p {
+    font-size: 1rem;
+  }
+  
+  .apprentice-item {
+    padding: 12px;
+  }
+  
+  .apprentice-name {
+    font-size: 0.95rem;
+  }
+  
+  .apprentice-email {
+    font-size: 0.85rem;
+  }
+  
+  .permissions-section,
+  .permissions-modules,
+  .module-permissions {
+    padding: 15px;
+  }
+  
+  .btn-group {
+    flex-direction: column;
+  }
+  
+  .btn-group .btn {
+    margin-bottom: 5px;
+  }
+  
+  .col-md-4,
+  .col-md-3 {
+    margin-bottom: 10px;
+  }
+}
+
+@media (max-width: 576px) {
+  .apprentice-permissions-panel {
+    padding: 5px;
+  }
+  
+  .row {
+    margin: 0;
+  }
+  
+  .col-md-4,
+  .col-md-8 {
+    padding: 5px;
+  }
+  
+  .card {
+    margin-bottom: 15px;
+  }
+  
+  .apprentice-item {
+    padding: 10px;
+  }
+  
+  .permissions-section,
+  .permissions-modules,
+  .module-permissions {
+    padding: 10px;
+  }
+  
+  .form-check {
+    margin-bottom: 8px;
+  }
+  
+  .btn-group.flex-wrap .btn {
+    font-size: 0.875rem;
+    padding: 6px 12px;
+  }
+}
+
+/* Animaciones */
+.apprentice-item,
+.form-check-input,
+.btn {
+  transition: all 0.3s ease;
+}
+
+.alert {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Estados Deshabilitados */
+.form-check-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-check-input:disabled + .form-check-label {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Mejoras Visuales */
+.card {
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+
+.card-header {
+  background-color: #fff;
+  border-bottom: 1px solid #e9ecef;
+  border-radius: 10px 10px 0 0 !important;
+  font-weight: 600;
+}
+
+.badge {
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* Colores de Estado */
+.bg-warning {
+  background-color: #ffc107 !important;
+  color: #212529 !important;
+}
+
+.bg-success {
+  background-color: #28a745 !important;
+}
+
+.bg-info {
+  background-color: #17a2b8 !important;
+}
+
+.bg-secondary {
+  background-color: #6c757d !important;
+}
+
+/* Iconos */
+.fas {
+  font-weight: 900;
+}
+
+.text-primary {
+  color: #007bff !important;
+}
+
+.text-success {
+  color: #28a745 !important;
+}
+
+.text-info {
+  color: #17a2b8 !important;
+}
+
+.text-warning {
+  color: #ffc107 !important;
+}
+
+.text-danger {
+  color: #dc3545 !important;
+}

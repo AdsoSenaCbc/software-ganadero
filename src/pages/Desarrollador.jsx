@@ -1,7 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2/dist/sweetalert2.js';
-import 'sweetalert2/dist/sweetalert2.min.css';
 import './Desarrollador.css';
 
 const Desarrollador = () => {
@@ -12,13 +11,14 @@ const Desarrollador = () => {
       title: 'Redirigiendo a la documentación',
       text: 'Cargando documentación...',
       icon: 'info',
-      confirmButtonText: 'Aceptar',
+      confirmButtonText: 'Okay',
     }).then(() => {
-      // Simulación de descarga (en un proyecto real, aquí iría la lógica de descarga)
-      const link = document.createElement('a');
-      link.href = 'https://adsosenacbc.github.io/manuales_software_ganadero/'; 
-      link.download = 'Documentacion de manuales';
-      link.click();
+      // Abrir el manual en una nueva pestaña de forma segura
+      const url = 'https://adsosenacbc.github.io/manuales_software_ganadero/';
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (win) {
+        win.opener = null;
+      }
     });
   };
 
@@ -29,7 +29,10 @@ const Desarrollador = () => {
       icon: 'info',
       confirmButtonText: 'Aceptar',
     }).then(() => {
-      window.open('https://github.com/AdsoSenaCbc', '_blank');
+      const win = window.open('https://github.com/AdsoSenaCbc', '_blank', 'noopener,noreferrer');
+      if (win) {
+        win.opener = null;
+      }
     });
   };
 

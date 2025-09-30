@@ -8,6 +8,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import Navbar from "./components/Navbar";
+import PermissionRefresher from "./components/PermissionRefresher";
 import Inicio from "./pages/Inicio";
 import RegistrarHacienda from "./pages/Registros/RegistrarHacienda";
 import RegistrarAnimal from "./pages/Registros/RegistrarAnimal";
@@ -20,6 +21,9 @@ import Informe from "./pages/Gestion/Informe";
 import Desarrollador from "./pages/Desarrollador";
 import Perfil from "./pages/Perfil";
 import ChangePassword from "./pages/ChangePassword"; // Importación existente
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import AdminPanel from "./pages/AdminPanel";
 import "./App.css";
 import "./pages/IniciarSesion.css";
 import { AuthProvider, useAuth } from "./AuthContext";
@@ -38,15 +42,8 @@ const ForgotPasswordLink = () => {
       // Si el usuario está autenticado, redirige a /cambiar-contrasena
       navigate("/cambiar-contrasena");
     } else {
-      // Si no está autenticado, muestra un mensaje
-      Swal.fire({
-        title: "Acceso Restringido",
-        text: "Debes iniciar sesión para cambiar tu contraseña. Por favor, inicia sesión primero.",
-        icon: "warning",
-        confirmButtonText: "Aceptar",
-      }).then(() => {
-        navigate("/iniciar-sesion");
-      });
+      // Si no está autenticado, redirige a la página de recuperación de contraseña
+      navigate("/forgot-password");
     }
   };
 
@@ -150,24 +147,22 @@ const IniciarSesion = () => {
             const registeredRole = usuario.rol;
             const permisos = Array.isArray(usuario.permisos) ? usuario.permisos : [];
 
-            login(registeredRole, loginEmail, access_token, permisos);
-            if (registeredRole === "Aprendiz" || registeredRole === "Instructor") {
-              Swal.fire({
-                title: "Inicio de Sesión",
-                text: `Bienvenido ${registeredRole} con el correo ${loginEmail}`,
-                icon: "success",
-                confirmButtonText: "Aceptar",
-              }).then(() => {
+            // Pasar todos los datos del usuario al contexto de autenticación
+            login(registeredRole, loginEmail, access_token, permisos, usuario);
+            
+            Swal.fire({
+              title: "Inicio de Sesión Exitoso",
+              text: `Bienvenido ${registeredRole}: ${usuario.nombres} ${usuario.apellidos}`,
+              icon: "success",
+              confirmButtonText: "Aceptar",
+            }).then(() => {
+              // Redirigir según el rol
+              if (registeredRole === "Administrador") {
+                navigate("/admin");
+              } else {
                 navigate("/");
-              });
-            } else if (registeredRole === "Administrador") {
-              Swal.fire({
-                title: "Inicio de Sesión",
-                text: `Bienvenido ${registeredRole} con el correo ${loginEmail}`,
-                icon: "success",
-                confirmButtonText: "Aceptar",
-              });
-            }
+              }
+            });
           } else {
             Swal.fire({
               title: "Error",
@@ -229,17 +224,29 @@ const IniciarSesion = () => {
               setLoginPassword(registerPassword);
             });
           } else {
+            const errorMessage = data.error || "Error al registrar";
+            const suggestion = data.suggestion || "";
+            
             Swal.fire({
-              title: "Error",
-              text: data.error || "Error al registrar",
+              title: "Error en el Registro",
+              html: `<p>${errorMessage}</p>${suggestion ? `<p><small>${suggestion}</small></p>` : ''}`,
               icon: "error",
               confirmButtonText: "Aceptar",
             });
           }
         } catch (error) {
+          console.error("Error de conexión:", error);
           Swal.fire({
-            title: "Error",
-            text: "No se pudo conectar con el servidor. Verifique que el backend esté activo en http://localhost:5000",
+            title: "Error de Conexión",
+            html: `
+              <p>No se pudo conectar con el servidor.</p>
+              <p><strong>Verificaciones:</strong></p>
+              <ul style="text-align: left; margin: 10px 0;">
+                <li>Backend ejecutándose en <code>http://localhost:5000</code></li>
+                <li>No hay errores en la consola del backend</li>
+                <li>El servidor no está bloqueado por firewall</li>
+              </ul>
+            `,
             icon: "error",
             confirmButtonText: "Aceptar",
           });
@@ -457,6 +464,8 @@ function App() {
             <Routes>
               <Route path="/" element={<Inicio />} />
               <Route path="/iniciar-sesion" element={<IniciarSesion />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/forbidden" element={<div><h2>Acceso denegado (403)</h2><p>No tienes permisos para acceder a esta sección.</p></div>} />
               <Route
                 path="/cambiar-contrasena"
@@ -546,7 +555,16 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute>
+                    <AdminPanel />
+                  </ProtectedRoute>
+                }
+              />
             </Routes>
+            <PermissionRefresher />
           </main>
           <footer
             style={{ backgroundColor: "#00324C" }}

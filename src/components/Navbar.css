@@ -1,21 +1,97 @@
 .navbar-custom {
     background-color: #00324C !important;
     /* Color azul oscuro personalizado */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .nav-link,
 .dropdown-item {
     font-size: 1.1rem;
-    transition: background-color 0.3s;
+    transition: all 0.3s ease;
+    position: relative;
 }
 
 .nav-link:hover,
 .dropdown-item:hover {
-    background-color: #00324C !important;
+    background-color: #004d73 !important;
     /* Un tono más oscuro para el hover */
     color: white !important;
+    transform: translateY(-1px);
 }
 
 .navbar-brand {
     font-size: 1.5rem;
-    font-weight: bold; }
+    font-weight: bold;
+    transition: transform 0.3s ease;
+}
+
+.navbar-brand:hover {
+    transform: scale(1.05);
+}
+
+/* Estilos específicos para el dropdown de Alimentación */
+.dropdown-menu {
+    border: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    padding: 0.5rem 0;
+}
+
+.dropdown-item {
+    padding: 0.75rem 1.5rem;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+}
+
+.dropdown-item i {
+    width: 20px;
+    color: #00324C;
+    transition: color 0.3s ease;
+}
+
+.dropdown-item:hover i {
+    color: white;
+}
+
+.dropdown-divider {
+    margin: 0.5rem 0;
+    border-color: #e9ecef;
+}
+
+/* Animación para el dropdown */
+.dropdown-menu {
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: all 0.3s ease;
+    pointer-events: none;
+}
+
+.dropdown-menu.show {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+/* Indicador visual para el menú activo */
+.nav-link.active {
+    background-color: #004d73 !important;
+    border-radius: 4px;
+}
+
+/* Responsive improvements */
+@media (max-width: 991px) {
+    .dropdown-menu {
+        background-color: #00324C;
+        border: none;
+        margin-top: 0;
+    }
+    
+    .dropdown-item {
+        color: white !important;
+    }
+    
+    .dropdown-item:hover {
+        background-color: #004d73 !important;
+    }
+}
